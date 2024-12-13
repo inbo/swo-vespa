@@ -2,10 +2,10 @@
 #----To do: specify project and species------
 #--------------------------------------------
 #specify project name
-project<-"Test_Frédérique"
+project<-"Test_Vespa_velutina_12_12"
 
 # specify the scientific name of the species to be modelled
-species<-c("Elodea densa","Koenigia polystachya", "Hydrocharis laevigata")
+species<-c("Vespa velutina")
 
 
 #--------------------------------------------
@@ -143,6 +143,7 @@ occ_download_wait(gbif_download_key)#Check download status
 #--------------------------------------------
 #gbif_download_key<-"0076914-240626123714530"
 #gbif_download_key<-"0064066-240626123714530" #4 species
+gbif_download_key<-"0016925-241126133413365"
 occ_download_get(gbif_download_key, path = here("data","raw"), overwrite=TRUE)
 metadata <- occ_download_meta(key = gbif_download_key)
 gbif_download_key<-metadata$key

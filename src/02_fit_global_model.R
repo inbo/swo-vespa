@@ -2,7 +2,7 @@
 #-----------To do: specify project ----------
 #--------------------------------------------
 #specify project name
-projectname<-"Test_Frédérique"
+projectname<-"Test_Vespa_velutina_12_12"
 
 
 #--------------------------------------------
@@ -10,8 +10,9 @@ projectname<-"Test_Frédérique"
 #--------------------------------------------
 options("rgdal_show_exportToProj4_warnings"="none")
 
-packages <- c( "dplyr", "stringr", "here", "qs","CoordinateCleaner","terra", "raster", "sf", "rnaturalearth", 
-               "ggplot2","tidyterra","mapview", "dismo", "sdm", "caret", "viridisLite", "kableExtra","future", "future.apply"
+packages <- c( "dplyr", "stringr", "here", "qs","CoordinateCleaner","terra", "raster", "sf", "rnaturalearth", "rnaturalearthdata", 
+               "ggplot2","tidyterra","mapview", "dismo", "sdm", "caret", "viridisLite", "kableExtra","future", "future.apply",
+               "earth", "randomForest"
                )
 
 for(package in packages) {
@@ -100,6 +101,7 @@ global.occ<-within(global.occ,rm("lon_dplaces","lat_dplaces")) # n= 1758
 #--------------------------------------------
 global.occ <- global.occ%>%
   dplyr::mutate(Group = case_when(kingdom == "Plantae" ~ "Plants",
+                                  class == "Insecta" ~ "Plants",
                                   class == "Aves" ~ "Birds",
                                   phylum == "Mollusca" ~ "Molluscs",
                                   class == "Amphibia" ~ "Amphibians",
@@ -109,7 +111,7 @@ global.occ <- global.occ%>%
                                   class == "Sphenodontia" ~ "Reptiles",
                                   class == "Squamata" ~ "Reptiles",
                                   TRUE ~ NA_character_))
-
+# TO DO: bias layer Diederik
 
 #--------------------------------------------
 #-------Prepare occurrence dataset-----------
@@ -132,7 +134,7 @@ cleaned<-clean_coordinates(x = global.occ.LL, lon= "decimalLongitude", lat= "dec
                            tests = c("capitals", 
                                      "centroids","gbif", "institutions", 
                                      "zeros"),value="clean")
-
+#TO DO Soria: cirkel rond brussel verkleinen
 
 #--------------------------------------------
 #--------Load global climate rasters --------
@@ -470,7 +472,7 @@ system.time({ # 5 species (43 min)
       #geom_sf(data = world,  colour = "grey", fill = NA)+
       geom_spatraster(data = global_model) +
       scale_fill_gradientn(colors = viridis_palette, breaks = brks, labels = brks, na.value = NA) +
-      geom_sf(data = global.occ.sf, color = "black", fill = "red", size =1.5, shape = 21) +
+      #geom_sf(data = global.occ.sf, color = "black", fill = "red", size =1.5, shape = 21) +
       coord_sf(xlim = c(-10, 40), ylim = c(35, 72)) + 
       labs(fill = "Suitability")+
       theme_bw()
@@ -501,4 +503,5 @@ system.time({ # 5 species (43 min)
 #---------- Clean R environment--------------
 #--------------------------------------------
 rm(list = ls())
+
 
