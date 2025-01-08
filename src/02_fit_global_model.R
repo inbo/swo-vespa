@@ -166,7 +166,8 @@ bias_grid_paths <- list(
   Birds = here("./data/external/bias_grids/final/trias/birds_1deg_min5.tif"),
   Mammals = here("./data/external/bias_grids/final/trias/mammals_1deg_min5.tif"),
   Molluscs = here("./data/external/bias_grids/final/trias/molluscs_1deg_min5.tif"),
-  Reptiles = here("./data/external/bias_grids/final/trias/reptiles_1deg_min5.tif")
+  Reptiles = here("./data/external/bias_grids/final/trias/reptiles_1deg_min5.tif"),
+  Insects = here("./data/external/bias_grids/final/trias/insects")
 )
 
 
@@ -313,7 +314,8 @@ system.time({ # 5 species (43 min)
     #Generate pseudoabsences
     set.seed(728)
     global_points <- generate_pseudoabs( mask = biasgrid_sub_raster, alternative_mask = raster(ecoregions_raster) , n = numb.global.pseudoabs, p =  st_drop_geometry(global.occ.sf))
-    
+    #pseudo absences worden gekozen obv bias layer -> gelijke gewichten
+    #pixels met veel insecten krijgen meer pseudo absences 
     
     #--------------------------------------------
     #--- Create presence-pseudoabsence dataset---

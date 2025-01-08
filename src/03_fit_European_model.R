@@ -2,7 +2,7 @@
 #-----------To do: specify project ----------
 #--------------------------------------------
 #specify project name
-projectname<-"Test_Frédérique"
+projectname<-"Test_Vespa_velutina_12_12"
 
 
 #--------------------------------------------
@@ -10,7 +10,8 @@ projectname<-"Test_Frédérique"
 #--------------------------------------------
 options("rgdal_show_exportToProj4_warnings"="none")
 
-packages <- c( "dplyr", "here", "qs","terra", "sf", "ggplot2","RColorBrewer","magick","patchwork","grid"
+packages <- c( "dplyr", "here", "qs","terra", "sf", "ggplot2","RColorBrewer","magick","patchwork","grid", "tidyterra", "viridisLite",
+               "sp", "raster", "dismo", "caret", "kableExtra", "earth", "Formula", "plotmo", "plotrix"
 )
 
 for(package in packages) {
@@ -90,6 +91,7 @@ habitat_stack<-rast(habitat[c(1:5,7)]) #Distance to water (layer 6) has another 
 #------------- Load species data -----------
 #--------------------------------------------
 taxa_info<-read.csv2(paste0("./data/projects/",projectname,"/",projectname,"_taxa_info.csv"))
+
 accepted_taxonkeys<-taxa_info%>%
   pull(speciesKey)%>%
   unique()
@@ -134,7 +136,7 @@ system.time({
     #--  Create European subset of occurrences --
     #--------------------------------------------
     eu_occ<-st_join(euboundary, global.occ.sf)%>%
-      select(decimalLatitude, decimalLongitude, species)%>%
+      dplyr::select(decimalLatitude, decimalLongitude, species)%>%
       filter(!is.na(decimalLatitude))%>%
       st_drop_geometry()
     
@@ -448,12 +450,14 @@ system.time({
                            breaks = brks, 
                            labels = brks, 
                            na.value = NA) +
-      geom_sf(data = euocc1, color = "black", fill = "red", 
-              size = 1.5, shape = 21) +
+      #geom_sf(data = euocc1, color = "black", fill = "red", 
+              #size = 1.5, shape = 21) +
       theme_bw() +
       labs(fill = "Suitability")+
       coord_sf(xlim = c(2254476, 6005897), 
                ylim = c(1363659, 5469923))
+    
+    eu_plot
     
     #Create an empty plot to fill PDF
     empty_plot <- ggplot() + 
@@ -542,8 +546,8 @@ system.time({
                            breaks = brks, 
                            labels = brks, 
                            na.value = NA) +
-      geom_sf(data = be_occ, color = "black", fill = "red", 
-              size = 1.5, shape = 21) +
+      #geom_sf(data = be_occ, color = "black", fill = "red", 
+              #size = 1.5, shape = 21) +
       theme_bw() +
       labs(fill = "Suitability")
     

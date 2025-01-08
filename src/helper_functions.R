@@ -40,8 +40,8 @@ add.occ<-function(x,y){
 findThresh<-function(df){
   df<-df[c("rowIndex","obs","present")]
   df<-df %>%
-    mutate(observed= ifelse(obs == "present",1,0)) %>%
-    select(rowIndex,observed,predicted=present)
+    dplyr::mutate(observed= ifelse(obs == "present",1,0)) %>%
+    dplyr::select(rowIndex,observed,predicted=present)
   result<-PresenceAbsence::optimal.thresholds(df,opt.methods = 2)
   return(result)
 }
@@ -53,8 +53,8 @@ findThresh<-function(df){
 accuracyStats<-function(df,y){
   df<-df[c("rowIndex","obs","present")]
   df<-df %>%
-    mutate(observed= ifelse(obs == "present",1,0)) %>%
-    select(rowIndex,observed,predicted=present)
+    dplyr::mutate(observed= ifelse(obs == "present",1,0)) %>%
+    dplyr::select(rowIndex,observed,predicted=present)
   result<-PresenceAbsence::presence.absence.accuracy(df,threshold = y,st.dev=FALSE)
   return(result)
 }
