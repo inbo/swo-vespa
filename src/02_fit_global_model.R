@@ -10,8 +10,8 @@ projectname<-"Test_Vespa_velutina_13_01"
 #--------------------------------------------
 options("rgdal_show_exportToProj4_warnings"="none")
 
-packages <- c( "dplyr", "stringr", "here", "qs","CoordinateCleaner","terra", "raster", "sf", "rnaturalearth", "rnaturalearthdata", 
-               "ggplot2","tidyterra","mapview", "dismo", "sdm", "caret", "viridisLite", "kableExtra","future", "future.apply",
+packages <- c( "devtools", "dplyr", "stringr", "here", "qs","CoordinateCleaner","terra", "raster", "sf", "rnaturalearth", "rnaturalearthdata", 
+               "ggplot2","ggspatial", "tidyterra","mapview", "dismo", "sdm", "caret", "viridisLite", "kableExtra","future", "future.apply",
                "earth", "randomForest"
                )
 
@@ -95,13 +95,19 @@ global.occ[global.occ$lon_dplaces < 4 & global.occ$lat_dplaces < 4 , ]<-NA
 global.occ<-global.occ[ which(!is.na(global.occ$lon_dplaces)),]
 global.occ<-within(global.occ,rm("lon_dplaces","lat_dplaces")) # n= 1758
 
+#Remove coordinates in America
+global.occ <- global.occ %>%
+  filter(decimalLongitude > -30)
+
+
+
 
 #--------------------------------------------
 #------------ Define species group-----------
 #--------------------------------------------
 global.occ <- global.occ%>%
   dplyr::mutate(Group = case_when(kingdom == "Plantae" ~ "Plants",
-                                  class == "Insecta" ~ "Plants",
+                                  class == "Insecta" ~ "Insects",
                                   class == "Aves" ~ "Birds",
                                   phylum == "Mollusca" ~ "Molluscs",
                                   class == "Amphibia" ~ "Amphibians",
@@ -122,18 +128,29 @@ rm(global.occ, global)
 #--------------------------------------------
 #-----------Do coordinate cleaning-----------
 #--------------------------------------------
-# OPTIONAL: Coordinates are tested for several things: whether they are in capitals, whether ... . For each coordinate a column per test is added indicating wether the result is potentially problematic (FALSE) or a clean coordinate (TRUE)
-#flags_report<-clean_coordinates(x = global.occ.LL, lon= "decimalLongitude", lat= "decimalLatitude",
-#  tests = c("capitals", 
-# "centroids","gbif", "institutions", 
-# "seas", "zeros"))
 
 # Only keep coordinates that are not flagged as potentially problematic
 cleaned<-clean_coordinates(x = global.occ.LL, lon= "decimalLongitude", lat= "decimalLatitude",
                            tests = c("capitals", 
-                                     "centroids","gbif", "institutions", 
+                                     "centroids","gbif", "institutions", "seas",
                                      "zeros"),value="clean")
 #TO DO Soria: cirkel rond brussel verkleinen
+
+#Visualize datapoints
+global.occ_sf <- st_as_sf(cleaned, coords = c("decimalLongitude", "decimalLatitude"), crs = 4326)
+global.occ_sf <- global.occ_sf %>%
+  mutate(
+    decimalLongitude = st_coordinates(.)[, 1],
+    decimalLatitude = st_coordinates(.)[, 2])
+
+fig_velutina <- ggplot() +
+  annotation_map_tile(type = "osm") +
+  geom_sf(data = global.occ_sf, aes(color = "red"), size = 0.5) +
+  theme_minimal() +
+  labs(title = "Vespa velutina Locations", color = "Hornet Data") +
+  theme(legend.position = "none")
+fig_velutina
+
 
 #--------------------------------------------
 #--------Load global climate rasters --------
@@ -188,6 +205,7 @@ gc()
 #--------------------------------------------
 #-------Start loop for SDM modelling --------
 #--------------------------------------------
+i<-1
 system.time({ # 5 species (43 min)
   for(i in seq_along (split_df)){ 
     globalmodels<-list()
