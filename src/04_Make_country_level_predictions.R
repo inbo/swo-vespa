@@ -2,7 +2,7 @@
 #-----------To do: specify project-----------
 #--------------------------------------------
 #specify project name
-projectname<-"Test_Vespa_velutina_12_12"
+projectname<-"Test_Vespa_velutina_13_01"
 
 
 #--------------------------------------------
