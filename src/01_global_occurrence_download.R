@@ -2,7 +2,7 @@
 #----To do: specify project and species------
 #--------------------------------------------
 #specify project name
-project<-"Test_Vespa_velutina_12_12"
+project<-"Test_Vespa_velutina_13_01"
 
 # specify the scientific name of the species to be modelled
 species<-c("Vespa velutina")
@@ -141,8 +141,6 @@ occ_download_wait(gbif_download_key)#Check download status
 #--------------------------------------------
 #--------------Retrieve download-------------
 #--------------------------------------------
-#gbif_download_key<-"0076914-240626123714530"
-#gbif_download_key<-"0064066-240626123714530" #4 species
 gbif_download_key<-"0016925-241126133413365"
 occ_download_get(gbif_download_key, path = here("data","raw"), overwrite=TRUE)
 metadata <- occ_download_meta(key = gbif_download_key)
@@ -151,8 +149,50 @@ gbif_download_key<-metadata$key
 #extract_GBIF_occurrence
 raw.path<- here("data", "raw", gbif_download_key)
 unzip(paste0(raw.path,".zip"),exdir=raw.path, overwrite=TRUE)
-global<-as.data.frame(data.table::fread(paste0(raw.path,"/occurrence.txt"),header=TRUE))
-global<-select(global, c(speciesKey,species,  decimalLatitude, decimalLongitude, kingdom, phylum, class, coordinateUncertaintyInMeters, identificationVerificationStatus))
+gbif<-as.data.frame(data.table::fread(paste0(raw.path,"./occurrence.txt"),header=TRUE))
+gbif<-select(gbif, c(speciesKey,species,  decimalLatitude, decimalLongitude, kingdom, phylum, class, coordinateUncertaintyInMeters, identificationVerificationStatus))
+
+
+#--------------------------------------------
+#------ Load extra data iAsset and manual-----
+#--------------------------------------------
+
+
+manual <- as.data.frame(data.table::fread(here("data", "raw","manual.csv"), header = TRUE))
+manual <- manual[!is.na(manual$latitude), ]
+iAsset <- as.data.frame(data.table::fread(here("data", "raw","iAsset.csv"), header = TRUE))
+
+
+#--------------------------------------------
+#----------Merge data with gbif--------------
+#--------------------------------------------
+
+manual_for_gbif <- data.frame(
+  speciesKey = rep(unique(gbif$speciesKey), nrow(manual)),  
+  species = rep(unique(gbif$species), nrow(manual)),
+  decimalLatitude = manual$latitude,
+  decimalLongitude = manual$longitude,
+  kingdom = rep(unique(gbif$kingdom), nrow(manual)),  
+  phylum = rep(unique(gbif$phylum), nrow(manual)),  
+  class = rep(unique(gbif$class), nrow(manual)),  
+  coordinateUncertaintyInMeters = rep(NA, nrow(manual)),
+  identificationVerificationStatus= rep(NA, nrow(manual))
+)
+
+iAsset_for_gbif <- data.frame(
+  speciesKey = rep(unique(gbif$speciesKey), nrow(iAsset)),  
+  species = rep(unique(gbif$species), nrow(iAsset)),
+  decimalLatitude = iAsset$latitude,
+  decimalLongitude = iAsset$longitude,
+  kingdom = rep(unique(gbif$kingdom), nrow(iAsset)),  
+  phylum = rep(unique(gbif$phylum), nrow(iAsset)),  
+  class = rep(unique(gbif$class), nrow(iAsset)),  
+  coordinateUncertaintyInMeters = rep(NA, nrow(iAsset)),
+  identificationVerificationStatus= rep(NA, nrow(iAsset))
+  
+)
+
+global <- rbind(gbif, manual_for_gbif, iAsset_for_gbif)
 
 
 #--------------------------------------------

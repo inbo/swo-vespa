@@ -111,7 +111,6 @@ global.occ <- global.occ%>%
                                   class == "Sphenodontia" ~ "Reptiles",
                                   class == "Squamata" ~ "Reptiles",
                                   TRUE ~ NA_character_))
-# TO DO: bias layer Diederik
 
 #--------------------------------------------
 #-------Prepare occurrence dataset-----------
@@ -167,9 +166,10 @@ bias_grid_paths <- list(
   Mammals = here("./data/external/bias_grids/final/trias/mammals_1deg_min5.tif"),
   Molluscs = here("./data/external/bias_grids/final/trias/molluscs_1deg_min5.tif"),
   Reptiles = here("./data/external/bias_grids/final/trias/reptiles_1deg_min5.tif"),
-  Insects = here("./data/external/bias_grids/final/trias/insects")
+  Insects = here("./data/external/bias_grids/final/trias/10km_bias_layer_log_smoothed_idw.tif")
 )
-
+#TO DO: smooth op 1km runnen
+#TO DO: sampbias runnen combined_global_bias.tif
 
 #--------------------------------------------
 #------- Split dataframe by taxonkey --------

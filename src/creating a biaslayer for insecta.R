@@ -1,8 +1,3 @@
-# --------------------------------------------------------------------------------------
-# Set working directory to the script's location
-# --------------------------------------------------------------------------------------
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-cat("Working directory:", getwd(), "\n")
 
 ######################################
 ### Creating bias layer for insects ###
