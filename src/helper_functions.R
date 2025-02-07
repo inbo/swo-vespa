@@ -124,7 +124,7 @@ predict_large_raster<-function(rasterstack, model, type) {
 # PDF export function
 #-----------------------------------------------------------------------------------
 exportPDF<-function(rst,taxonkey,taxonName,nameextension,is.diff="FALSE"){
-  filename=file.path(pdfOutput,paste("be_",taxonkey, "_",nameextension,sep=""))
+  filename=file.path(PDF_folder,paste("be_",taxonkey, "_",nameextension,sep=""))
   pdf(file=filename,width=10,height=8,paper="a4r")
   par(bty="n")#to turn off box around plot
   ifelse(is.diff=="TRUE", brks<-seq(-1, 1, by=0.2), brks <- seq(0, 1, by=0.1)) 
@@ -257,4 +257,162 @@ create_folder <- function(path, name) {
   } else {
     message(paste0("Folder '", name, "' already exists at path: '", path, "' 🎉"))
   }
+}
+
+#-----------------------------------------------------------------------------------
+#-------------------------------Functions script 4----------------------------------
+#-----------------------------------------------------------------------------------
+
+stdres<-function(obs.numeric, yhat){
+  num<-obs.numeric-yhat
+  denom<-sqrt(yhat*(1-yhat))
+  return(num/denom)
+}
+
+
+# functions needed for conformal prediction function
+
+
+GetLength<-function(x,y){
+  length(x[which(x<= y)])
+}
+
+
+
+# Code for Mondrian conformal prediction functions
+
+
+
+CPconf<-function(pA,pB,confidence){
+  if(pA > confidence && pB< confidence){
+    predClass<-"classA"
+  }else if(pA < confidence && pB> confidence){
+    predClass<-"classB"
+  }else if(pA< confidence && pB< confidence){
+    predClass<-"noClass"
+  }else{
+    predClass<-"bothClasses"
+    
+    return(predClass)
+  }}
+
+
+#function to calculate confidence of each prediction
+
+get.confidence<-function(pvalA,pvalB){
+  secondHighest<-ifelse(pvalA>pvalB,pvalB,pvalA)
+  conf<-(1-secondHighest)
+  return(conf)
+}
+
+forcedCp<-function(pvalA,pvalB){
+  ifelse(pvalA>pvalB,"presence","absence")
+}
+
+extractVals<-function(predras){
+  vals <-  raster::values(predras)
+  coord <-  raster::xyFromCell(predras,1:ncell(predras))
+  raster_fitted <- cbind(coord,vals)
+  raster_fitted.df<-as.data.frame(raster_fitted)
+  raster_fitted.df1<-na.omit(raster_fitted.df)
+  raster_fitted.df1$presence<-raster_fitted.df1$lyr1
+  raster_fitted.df1$absence<- (1-raster_fitted.df1$presence)
+  return(raster_fitted.df1)
+}
+
+
+classConformalPrediction<-function(x,y){
+  ens_results<- get("x")
+  ens_calib<-ens_results$ens_model$pred
+  calibPresence<-ens_calib %>%
+    filter(obs=='present')%>%
+    select(present)
+  calibPresence<-unname(unlist(calibPresence[c("present")]))
+  calibAbsence<-ens_calib %>%
+    filter(obs=='absent')%>%
+    select(absent)
+  calibAbsence<-unname(unlist(calibAbsence[c("absent")]))
+  predicted.values<-extractVals(y)
+  
+  
+  testPresence<-predicted.values$presence
+  testAbsence<-predicted.values$absence
+  
+  #derive p.Values for class A
+  smallrA<-lapply(testPresence,function(x) GetLength(calibPresence,x))
+  smallrA_1<- unlist (smallrA)+1
+  nCalibSet<-length(calibPresence)+1
+  pvalA<-smallrA_1+1/nCalibSet
+  
+  # derive p.Values for Class B
+  smallrB<-lapply(testAbsence,function(x) GetLength(calibAbsence,x))
+  smallrB_1<- unlist (smallrB)+1
+  nCalibSetB<-length(calibAbsence)
+  pvalB<-smallrB_1/nCalibSetB
+  
+  pvalsdf<-as.data.frame(cbind(pvalA,pvalB,0.20))
+  #raster_cp_20<-mapply(CPconf,pvalsdf$pvalA,pvalsdf$pvalB,pvalsdf[3])
+  #table(raster_cp_20)
+  
+  pvalsdf$conf<-get.confidence(pvalsdf$pvalA,pvalsdf$pvalB)
+  pvalsdf_1<-cbind(pvalsdf,predicted.values)
+}
+
+
+# Confidence maps
+
+confidenceMaps<-function(x,taxonkey,taxonName,maptype){
+  pvals_dataframe<-get("x")
+  data.xyz <- pvals_dataframe[c("x","y","conf")]
+  rst <- rasterFromXYZ(data.xyz)
+  crs(rst)<-CRS("+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +units=m +no_defs") 
+  plot(rst,breaks=brks, col=cols,lab.breaks=brks)
+  writeRaster(rst, filename=file.path(raster_folder,paste("be_",taxonkey, "_",maptype,".tif",sep="")),overwrite=TRUE)
+  exportPDF(rst,taxonkey,taxonName=taxonName,nameextension= paste(maptype,".pdf",sep=""))
+  return(rst)
+}
+
+### Generate and export response curves in order of variable importance
+
+partial_gbm<-function(x){
+  m.gbm<-pdp::partial(bestModel$models$gbm$finalModel,pred.var=paste(x),train = bestModel.train,type="classification",
+                      prob=TRUE,n.trees= bestModel$models$gbm$finalModel$n.trees, which.class = 1,grid.resolution=nrow(bestModel.train))
+}
+
+partial_glm<-function(x){
+  m.glm<-pdp::partial(bestModel$models$glm$finalModel,pred.var=paste(x),train = bestModel.train,type="classification",
+                      prob=TRUE,which.class = 1,grid.resolution=nrow(bestModel.train))
+}
+
+partial_rf<-function(x){
+  pdp::partial(bestModel$models$rf$finalModel,pred.var=paste(x),train = bestModel.train,type="classification",
+               prob=TRUE,which.class = 1,grid.resolution=nrow(bestModel.train))
+}
+
+partial_mars<-function(x){
+  m.mars<-pdp::partial(bestModel$models$earth$finalModel,pred.var=paste(x),train = bestModel.train,type="classification",
+                       prob=TRUE,which.class = 2,grid.resolution=nrow(bestModel.train)) # class=2 because in earth pkg, absense is the first class
+}
+
+
+responseCurves<-function(x,y) {
+  colors <- c("GLM" = "gray", "GBM"="red","RF"="blueviolet","MARS"= "hotpink") 
+  ggplot(all_dfs,(aes(x=.data[[x]],y=.data[[y]]))) +
+    geom_line(aes(color = data), size =1.2, position=position_dodge(width=0.2))+
+    theme_bw()+
+    labs(y="Partial probability", x= gsub("//..*","",x),color="Legend") +
+    scale_color_manual(values = colors)
+} 
+
+
+eu_eval<-function (ras,y){
+  indep.bil<-raster::extract(ras,y,method="bilinear")
+  indep.bil.df<-as.data.frame(indep.bil)
+  indep.bil.df<-indep.bil.df %>%
+    mutate(predicted= ifelse(indep.bil >= 0.5,"present","absent")) 
+  indep.bil.df$observed<-rep("present",nrow(indep.bil.df))
+  indep.bil.df$predicted<-as.factor(indep.bil.df$predicted)
+  indep.bil.df$observed<-as.factor(indep.bil.df$observed)
+  xtab<-table(indep.bil.df$predicted,indep.bil.df$observed)
+  return(xtab)
 }

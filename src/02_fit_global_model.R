@@ -2,7 +2,7 @@
 #-----------To do: specify project ----------
 #--------------------------------------------
 #specify project name
-projectname<-"Test_Vespa_velutina_13_01"
+projectname<-"Spatial_thinning10km"
 
 
 #--------------------------------------------
@@ -12,7 +12,7 @@ options("rgdal_show_exportToProj4_warnings"="none")
 
 packages <- c( "devtools", "dplyr", "stringr", "here", "qs","CoordinateCleaner","terra", "raster", "sf", "rnaturalearth", "rnaturalearthdata", 
                "ggplot2","ggspatial", "tidyterra","mapview", "dismo", "sdm", "caret", "viridisLite", "kableExtra","future", "future.apply",
-               "earth", "randomForest"
+               "earth", "randomForest", "GeoThinneR"
                )
 
 for(package in packages) {
@@ -130,26 +130,211 @@ rm(global.occ, global)
 #--------------------------------------------
 
 # Only keep coordinates that are not flagged as potentially problematic
-cleaned<-clean_coordinates(x = global.occ.LL, lon= "decimalLongitude", lat= "decimalLatitude",
-                           tests = c("capitals", 
-                                     "centroids","gbif", "institutions", "seas",
-                                     "zeros"),value="clean")
-#TO DO Soria: cirkel rond brussel verkleinen
+cleaned<-global.occ.LL%>%
+  cc_cen(buffer=100) %>% # remove points within a buffer of 100m around country centroids, default 1km
+  cc_cap(buffer=100) %>% # remove capitals centroids (buffer 100m), default 10km
+  cc_inst(buffer=100) %>% # remove zoo and herbaria records buffer of 100 m around biodiversity institutes, default 100m
+  cc_gbif(buffer=100)%>% #remove around GBIF headquarters in Copenhagen (buffer 100m), default 100m
+  cc_zero() #Remove around the 0/0 point (buffer 0.5 degrees)
 
-#Visualize datapoints
+#--------------------------------------------
+#------------Visualize datapoints------------
+#--------------------------------------------
+cleaned_Europe <- cleaned%>%
+  filter(decimalLongitude<20)
+cleaned_nonEurope <- cleaned%>%
+  filter(decimalLongitude>40)
+
 global.occ_sf <- st_as_sf(cleaned, coords = c("decimalLongitude", "decimalLatitude"), crs = 4326)
 global.occ_sf <- global.occ_sf %>%
   mutate(
     decimalLongitude = st_coordinates(.)[, 1],
     decimalLatitude = st_coordinates(.)[, 2])
 
-fig_velutina <- ggplot() +
+europe.occ_sf <- st_as_sf(cleaned_Europe, coords = c("decimalLongitude", "decimalLatitude"), crs = 4326)
+europe.occ_sf <- europe.occ_sf %>%
+  mutate(
+    decimalLongitude = st_coordinates(.)[, 1],
+    decimalLatitude = st_coordinates(.)[, 2])
+
+noneurope.occ_sf <- st_as_sf(cleaned_nonEurope, coords = c("decimalLongitude", "decimalLatitude"), crs = 4326)
+noneurope.occ_sf <- noneurope.occ_sf %>%
+  mutate(
+    decimalLongitude = st_coordinates(.)[, 1],
+    decimalLatitude = st_coordinates(.)[, 2])
+
+fig_velutina_global <- ggplot() +
   annotation_map_tile(type = "osm") +
   geom_sf(data = global.occ_sf, aes(color = "red"), size = 0.5) +
   theme_minimal() +
-  labs(title = "Vespa velutina Locations", color = "Hornet Data") +
+  labs(title = "Vespa velutina Locations Globally", color = "Hornet Data") +
   theme(legend.position = "none")
-fig_velutina
+fig_velutina_global
+
+fig_velutina_europe <- ggplot() +
+  annotation_map_tile(type = "osm") +
+  geom_sf(data = europe.occ_sf, aes(color = "red"), size = 0.5) +
+  theme_minimal() +
+  labs(title = "Vespa velutina Locations Europe", color = "Hornet Data") +
+  theme(legend.position = "none")
+fig_velutina_europe
+
+fig_velutina_noneurope <- ggplot() +
+  annotation_map_tile(type = "osm") +
+  geom_sf(data = noneurope.occ_sf, aes(color = "red"), size = 0.5) +
+  theme_minimal() +
+  labs(title = "Vespa velutina Locations non-Europe", color = "Hornet Data") +
+  theme(legend.position = "none")
+fig_velutina_noneurope
+
+amount_EUvsnonEU<-data.frame(Distance='0km',
+                             Europe=length(cleaned_Europe$decimalLongitude),
+                             nonEurope=length(cleaned_nonEurope$decimalLongitude))
+
+#--------------------------------------------
+#----------- Spatial thinning----------------
+#--------------------------------------------
+
+#TO DO: vragen Diederik grid-based thinning OK
+
+# 10 km 
+thinned_10km_Europe<- thin_points(
+  data = cleaned_Europe, # Dataframe with coordinates
+  long_col = "decimalLongitude", # Longitude column name
+  lat_col = "decimalLatitude", # Latitude column name
+  method = "grid",  # Method for thinning
+  thin_dist = 10,  # Thinning distance in km,
+  trials = 1, # Number of reps
+  all_trials = TRUE # Return all trials
+)
+thinned_10km_Europe
+
+# visual check thinning
+europe10.occ_sf <- st_as_sf(thinned_10km_Europe[[1]], coords = c("decimalLongitude", "decimalLatitude"), crs = 4326)
+europe10.occ_sf <- europe10.occ_sf %>%
+  mutate(
+    decimalLongitude = st_coordinates(.)[, 1],
+    decimalLatitude = st_coordinates(.)[, 2])
+plot_thinned_europe_10 <- ggplot() +
+  annotation_map_tile(type = "osm") +
+  geom_sf(data = europe10.occ_sf, aes(color = "red"), size = 0.5) +
+  theme_minimal() +
+  labs(title = "Thinned Locations Europe (10km)", color = "Hornet Data") +
+  theme(legend.position = "none")
+plot_thinned_europe_10
+
+thinned_10km_nonEurope<- thin_points(
+  data = cleaned_nonEurope, # Dataframe with coordinates
+  long_col = "decimalLongitude", # Longitude column name
+  lat_col = "decimalLatitude", # Latitude column name
+  method = "grid",  # Method for thinning
+  thin_dist = 10,  # Thinning distance in km,
+  trials = 1, # Number of reps
+  all_trials = TRUE # Return all trials
+)
+thinned_10km_nonEurope
+
+
+amount_EUvsnonEU_10kmthin<-data.frame(Distance='10km',
+                                      Europe=length(thinned_10km_Europe[[1]]$decimalLongitude),
+                             nonEurope=length(thinned_10km_nonEurope[[1]]$decimalLongitude))
+amount_EUvsnonEU_10kmthin
+thinned_10km<-rbind(thinned_10km_Europe[[1]], thinned_10km_nonEurope[[1]])
+
+# 25 km
+thinned_25km_Europe<- thin_points(
+  data = cleaned_Europe, # Dataframe with coordinates
+  long_col = "decimalLongitude", # Longitude column name
+  lat_col = "decimalLatitude", # Latitude column name
+  method = "grid",  # Method for thinning
+  thin_dist = 25,  # Thinning distance in km,
+  trials = 1, # Number of reps
+  all_trials = TRUE # Return all trials
+)
+thinned_25km_Europe
+
+# visual check thinning
+europe25.occ_sf <- st_as_sf(thinned_25km_Europe[[1]], coords = c("decimalLongitude", "decimalLatitude"), crs = 4326)
+europe25.occ_sf <- europe25.occ_sf %>%
+  mutate(
+    decimalLongitude = st_coordinates(.)[, 1],
+    decimalLatitude = st_coordinates(.)[, 2])
+plot_thinned_europe_25 <- ggplot() +
+  annotation_map_tile(type = "osm") +
+  geom_sf(data = europe25.occ_sf, aes(color = "red"), size = 0.5) +
+  theme_minimal() +
+  labs(title = "Thinned Locations Europe (25km)", color = "Hornet Data") +
+  theme(legend.position = "none")
+plot_thinned_europe_25
+
+thinned_25km_nonEurope<- thin_points(
+  data = cleaned_nonEurope, # Dataframe with coordinates
+  long_col = "decimalLongitude", # Longitude column name
+  lat_col = "decimalLatitude", # Latitude column name
+  method = "grid",  # Method for thinning
+  thin_dist = 25,  # Thinning distance in km,
+  trials = 1, # Number of reps
+  all_trials = TRUE # Return all trials
+)
+thinned_25km_nonEurope
+
+
+amount_EUvsnonEU_25kmthin<-data.frame(Distance='25km',
+                                      Europe=length(thinned_25km_Europe[[1]]$decimalLongitude),
+                                      nonEurope=length(thinned_25km_nonEurope[[1]]$decimalLongitude))
+amount_EUvsnonEU_25kmthin
+thinned_25km<-rbind(thinned_25km_Europe[[1]], thinned_25km_nonEurope[[1]])
+
+
+# 50 km
+thinned_50km_Europe<- thin_points(
+  data = cleaned_Europe, # Dataframe with coordinates
+  long_col = "decimalLongitude", # Longitude column name
+  lat_col = "decimalLatitude", # Latitude column name
+  method = "grid",  # Method for thinning
+  thin_dist = 50,  # Thinning distance in km,
+  trials = 1, # Number of reps
+  all_trials = TRUE # Return all trials
+)
+thinned_50km_Europe
+
+# visual check thinning
+europe50.occ_sf <- st_as_sf(thinned_50km_Europe[[1]], coords = c("decimalLongitude", "decimalLatitude"), crs = 4326)
+europe50.occ_sf <- europe50.occ_sf %>%
+  mutate(
+    decimalLongitude = st_coordinates(.)[, 1],
+    decimalLatitude = st_coordinates(.)[, 2])
+plot_thinned_europe_50 <- ggplot() +
+  annotation_map_tile(type = "osm") +
+  geom_sf(data = europe50.occ_sf, aes(color = "red"), size = 0.5) +
+  theme_minimal() +
+  labs(title = "Thinned Locations Europe (50km)", color = "Hornet Data") +
+  theme(legend.position = "none")
+plot_thinned_europe_50
+
+thinned_50km_nonEurope<- thin_points(
+  data = cleaned_nonEurope, # Dataframe with coordinates
+  long_col = "decimalLongitude", # Longitude column name
+  lat_col = "decimalLatitude", # Latitude column name
+  method = "grid",  # Method for thinning
+  thin_dist = 50,  # Thinning distance in km,
+  trials = 1, # Number of reps
+  all_trials = TRUE # Return all trials
+)
+thinned_50km_nonEurope
+
+
+amount_EUvsnonEU_50kmthin<-data.frame(Distance='50km',
+                                      Europe=length(thinned_50km_Europe[[1]]$decimalLongitude),
+                                      nonEurope=length(thinned_50km_nonEurope[[1]]$decimalLongitude))
+amount_EUvsnonEU_50kmthin
+thinned_50km<-rbind(thinned_50km_Europe[[1]], thinned_50km_nonEurope[[1]])
+  
+thinning_data<-rbind(amount_EUvsnonEU, amount_EUvsnonEU_10kmthin, 
+                         amount_EUvsnonEU_25kmthin, amount_EUvsnonEU_50kmthin)
+
+
+
 
 
 #--------------------------------------------
@@ -191,14 +376,14 @@ bias_grid_paths <- list(
 #--------------------------------------------
 #------- Split dataframe by taxonkey --------
 #--------------------------------------------
-sort(unique(cleaned$species))
-split_df<-split(cleaned,cleaned$species) 
+sort(unique(thinned_10km$species))
+split_df<-split(thinned_10km,thinned_10km$species) 
 
 
 #--------------------------------------------
 #---------------- Clean up ------------------
 #--------------------------------------------
-rm(global.occ.LL,cleaned)
+rm(global.occ.LL)
 gc()
 
 
@@ -255,11 +440,16 @@ system.time({ # 5 species (43 min)
     #--------------------------------------------
     #------ Plot distribution of occurrences ----
     #--------------------------------------------
-    ggplot()+ 
-      geom_sf(data = world,  colour = "black", fill = NA)+
-      geom_point(data=global.occ.sf, aes(x=decimalLongitude, y= decimalLatitude),  fill="green", shape = 22, colour = "black", size=3)+
-      labs(x="Longitude", y="Latitude")+
-      theme_bw()
+    occurrences_map_global <- ggplot() +
+      annotation_map_tile(type = "osm") +
+      geom_sf(data = global.occ.sf, aes(color = "red"), size = 0.5) +
+      theme_minimal() +
+      labs(title = "Vespa velutina Locations", color = "Hornet Data") +
+      theme(legend.position = "none")
+    occurrences_map_global
+
+    ggsave(filename = "occurrences_map_global.png", plot = occurrences_map_global, 
+           device = "png", width =16 , height = 20, path= file.path("./data/projects", projectname))
     
     
     #--------------------------------------------
@@ -275,12 +465,15 @@ system.time({ # 5 species (43 min)
     #--------------------------------------------
     #------------- Plot ecoregions --------------
     #--------------------------------------------
-    ggplot()+ 
+    ecoregions_map_global<-ggplot()+ 
       geom_sf(data = world,  colour = "black", fill = NA)+
       geom_sf(data=wwf_ecoSub1, fill="#f7786f")+
       labs(x="Longitude", y="Latitude")+
       theme_bw()
-    
+    ecoregions_map_global
+
+    ggsave(filename = "ecoregions_map_global.png", plot = ecoregions_map_global, 
+           device = "png", width =16 , height = 20, path= file.path("./data/projects", projectname))
     
     #--------------------------------------------
     #------ Import right bias grid --------------
@@ -302,7 +495,14 @@ system.time({ # 5 species (43 min)
     
     #Mask biasgrid with one of the climatic layers, to make sure it doesn't extend beyond them
     climategrid_rast<-terra::crop(globalclimpreds_terra[[1]], wwf_ecoSub1_ext)
-    biasgrid_sub<-terra::mask(biasgrid_sub, climategrid_rast) 
+    
+    # Resample biasgrid_sub to match the resolution of climategrid_rast
+    biasgrid_sub_resampled <- terra::resample(biasgrid_sub, climategrid_rast, method = "bilinear")
+    
+    # Now mask the resampled biasgrid_sub with climategrid_rast
+    biasgrid_sub <- terra::mask(biasgrid_sub_resampled, climategrid_rast)
+    
+    biasgrid_sub<-terra::mask(climategrid_rast,biasgrid_sub) 
     
     biasgrid_sub_raster <- raster(biasgrid_sub) #Convert SpatRaster back to normal raster object
     
@@ -310,13 +510,15 @@ system.time({ # 5 species (43 min)
     #--------------------------------------------
     #---------------Visualize biasgrid-----------
     #--------------------------------------------
-    ggplot()+ 
+    biasgrid_map_global<-ggplot()+ 
       geom_sf(data = world,  colour = "black", fill = NA)+
       geom_spatraster(data=biasgrid_sub)+
       scale_fill_continuous(na.value = "transparent",low = "blue", high = "orange")+
       labs(x="Longitude", y="Latitude")+
       theme_bw()
-    
+    biasgrid_map_global
+    ggsave(filename = "biasgrid_map_global.png", plot = biasgrid_map_global, 
+           device = "png", width =16 , height = 20, path= file.path("./data/projects", projectname))
     
     #--------------------------------------------
     #---------- Generate pseudoabsences ---------
@@ -329,7 +531,7 @@ system.time({ # 5 species (43 min)
     ecoregions_crop<-terra::crop(globalclimpreds_terra[[1]], wwf_ecoSub1_ext) #Crop one of the climate rasters to extent ecoregions
     ecoregions_raster<-mask(ecoregions_crop,wwf_ecoSub1_vector) #Mask with ecoregions vector
     
-    #Generate pseudoabsences
+    #Generate pseudoabsences (deze stap duurt lang)
     set.seed(728)
     global_points <- generate_pseudoabs( mask = biasgrid_sub_raster, alternative_mask = raster(ecoregions_raster) , n = numb.global.pseudoabs, p =  st_drop_geometry(global.occ.sf))
     #pseudo absences worden gekozen obv bias layer -> gelijke gewichten
@@ -352,7 +554,7 @@ system.time({ # 5 species (43 min)
     #--------------------------------------------
     #--Visualize presence-pseudoabsence dataset--
     #--------------------------------------------
-    mapview(biasgrid_sub_raster, 
+    m<-mapview(biasgrid_sub_raster, 
             col.regions = colorRampPalette(c("blue", "orange")),
             alpha=1, 
             na.color = "transparent", 
@@ -360,6 +562,8 @@ system.time({ # 5 species (43 min)
       mapview(global_presabs, zcol = "species", 
               col.regions = c("red", "yellow"),
               layer.name = "Species distribution")
+    
+    mapshot(m, url = file.path("./data/projects", projectname, "presence-pseudoabsence_map_global.html"))
     
     
     #--------------------------------------------
@@ -381,7 +585,7 @@ system.time({ # 5 species (43 min)
     
     # Remove highly correlated predictors from dataframe 
     global.data.df.subset<- global.data.df %>%
-      select (-all_of(highlyCorrelated), -rID) %>% 
+      dplyr::select (-all_of(highlyCorrelated), -rID) %>% 
       mutate(species = as.factor(species)) %>%
       mutate(species = recode_factor(species, 
                                      '0' = "absent",
@@ -469,9 +673,9 @@ system.time({ # 5 species (43 min)
     #--------------------------------------------
     #------------------ Clean up-----------------
     #--------------------------------------------
-    rm(list = setdiff(ls(), c("eu_climpreds.10", "global_stack", "split_df", "taxonkey", "species", "ensemble_accurracy", "accuracyStats", "decimalplaces", "divide10", "findThresh", "predict_large_raster", "globalclimpreds_terra","bias_grid_paths", "i", "globalmodels","global.occ.sf", "biasgrid_sub", "world", "projectname", "first_two_words", "generate_pseudoabs", "variableImportance_global")))
+    rm(list = setdiff(ls(), c("eu_climpreds.10", "global_stack", "split_df", "taxonkey", "species", "ensemble_accurracy", "accuracyStats", "decimalplaces", "divide10", "findThresh", "predict_large_raster", "globalclimpreds_terra","bias_grid_paths", "i", "globalmodels","global.occ.sf", "biasgrid_sub", "world", "projectname", "first_two_words", "generate_pseudoabs", "variableImportance_global", "thinning_data")))
     
-    
+
     #--------------------------------------------
     #-------- Make predictions for Europe--------
     #--------------------------------------------
@@ -488,7 +692,7 @@ system.time({ # 5 species (43 min)
     # Generate Viridis palette
     viridis_palette <- viridis(nb)
     
-    ggplot() + 
+    predictions_global<-ggplot() + 
       #geom_sf(data = world,  colour = "grey", fill = NA)+
       geom_spatraster(data = global_model) +
       scale_fill_gradientn(colors = viridis_palette, breaks = brks, labels = brks, na.value = NA) +
@@ -496,6 +700,9 @@ system.time({ # 5 species (43 min)
       coord_sf(xlim = c(-10, 40), ylim = c(35, 72)) + 
       labs(fill = "Suitability")+
       theme_bw()
+    
+    ggsave(filename = "predictions_global.png", plot = predictions_global, 
+           device = "png", width =16 , height = 20, path= file.path("./data/projects", projectname))
     
     
     #--------------------------------------------
@@ -506,6 +713,7 @@ system.time({ # 5 species (43 min)
                         global_ensemble_model = global_stack, 
                         model_accuracy = ensemble_accurracy,
                         variable_importance = variableImportance_global,
+                        thinning_data = thinning_data,
                         global_model_predictions = terra::wrap(global_model), #Needs to be wrapped to export it or will return a null pointer error
                         occurrences=global.occ.sf,
                         biasgrid=terra::wrap(biasgrid_sub)
@@ -518,10 +726,24 @@ system.time({ # 5 species (43 min)
   }
 })
 
-
 #--------------------------------------------
 #---------- Clean R environment--------------
 #--------------------------------------------
 rm(list = ls())
+
+#--------------------------------------------
+#------------ Open output qs file -----------
+#--------------------------------------------
+
+projectname<-"Spatial_thinning50km"
+first_two_words<-"Vespa_velutina"
+taxonkey<-1311477
+global_output_50<-qread(paste0("./data/projects/",projectname,"/",first_two_words,"_",taxonkey,"/Global_model_",first_two_words,"_",taxonkey,".qs"))
+global_ensemble_model_50<-global_output_50[3]
+model_accuracy_50<-global_output_50[4]
+variable_importance_50<-global_output_50[5]
+thinning_data_50<-global_output_50[6]
+global_model_predictions<-global_output_50[6]
+
 
 

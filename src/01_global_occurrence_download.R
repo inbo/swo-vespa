@@ -2,7 +2,7 @@
 #----To do: specify project and species------
 #--------------------------------------------
 #specify project name
-project<-"Test_Vespa_velutina_13_01"
+project<-"Spatial_thinning25km"
 
 # specify the scientific name of the species to be modelled
 species<-c("Vespa velutina")
@@ -41,10 +41,10 @@ create_folder(raw_path, "raw")
 #-----------Retrieve GBIF taxonkeys----------
 #--------------------------------------------
 # Match species names with the GBIF backbone, retrieve taxon keys from GBIF when a match is found
-taxon_df <- as.data.frame(species)
+#taxon_df <- as.data.frame(species)
 
-mapped_taxa <- purrr::map_dfr(
-  taxon_df$species,
+#mapped_taxa <- purrr::map_dfr(
+#  taxon_df$species,
   ~ {
     tryCatch(
       {
@@ -59,83 +59,83 @@ mapped_taxa <- purrr::map_dfr(
       }
     )
   }
-)
+#)
 
 #Make sure that only species info is stored as it is possible that genus information is captured when the species part of the name is not clear
-mapped_taxa<-mapped_taxa %>%
-  dplyr::filter(rank =="SPECIES")
+#mapped_taxa<-mapped_taxa %>%
+#  dplyr::filter(rank =="SPECIES")
 
 #Make sure that all species were mapped to the GBIF backbone, if not an error will appear indicating which species are missing
-assertthat::assert_that(nrow(mapped_taxa)==length(species),
-                        msg=paste0("The following species could not be found in the GBIF backbone taxonomy: "
-                                   ,species[!sapply(species, function(x) any(grepl(x,mapped_taxa$scientificName)))])
-)
+#assertthat::assert_that(nrow(mapped_taxa)==length(species),
+#                        msg=paste0("The following species could not be found in the GBIF backbone taxonomy: "
+#                                   ,species[!sapply(species, function(x) any(grepl(x,mapped_taxa$scientificName)))])
+#)
 
-not_accepted <- mapped_taxa %>%
-  dplyr::filter(status !="ACCEPTED")
+#not_accepted <- mapped_taxa %>%
+#  dplyr::filter(status !="ACCEPTED")
 
-if (nrow(not_accepted)!=0) {
-  warning(paste0("The following species do not have an accepted taxonomic status in the GBIF backbone: ",paste(unique(not_accepted$scientificName), collapse=", "),". Their corresponding accepted species names will be used for downloading occurrence data.")
-  )
-} else {
-  paste0("All species are accepted taxa in the GBIF backbone 🎉")
-}
+#if (nrow(not_accepted)!=0) {
+#  warning(paste0("The following species do not have an accepted taxonomic status in the GBIF backbone: ",paste(unique(not_accepted$scientificName), collapse=", "),". Their corresponding accepted species names will be used for downloading occurrence data.")
+#  )
+#} else {
+#  paste0("All species are accepted taxa in the GBIF backbone 🎉")
+#}
 
 #Extract taxonkeys of each species, for synonyms the acceptedUsageKey is stored
-accepted_taxonkeys<-mapped_taxa %>%
-  dplyr::filter(status =="ACCEPTED")%>%
-  pull(usageKey)
+#accepted_taxonkeys<-mapped_taxa %>%
+#  dplyr::filter(status =="ACCEPTED")%>%
+#  pull(usageKey)
 
-if(nrow(not_accepted!=0)){
-  synonym_taxonkeys<-mapped_taxa %>%
-    dplyr::filter(status !="ACCEPTED")%>%
-    pull(acceptedUsageKey)
+#if(nrow(not_accepted!=0)){
+#  synonym_taxonkeys<-mapped_taxa %>%
+#    dplyr::filter(status !="ACCEPTED")%>%
+#    pull(acceptedUsageKey)
   
-  accepted_taxonkeys<-c(accepted_taxonkeys, synonym_taxonkeys)
-}
+#  accepted_taxonkeys<-c(accepted_taxonkeys, synonym_taxonkeys)
+#}
 
 #Keep unique accepted taxonkeys
-accepted_taxonkeys<-unique(accepted_taxonkeys)
+#accepted_taxonkeys<-unique(accepted_taxonkeys)
 
 
 #--------------------------------------------
 #-----------Define download settings---------
 #--------------------------------------------
 #All basis of record types, except `FOSSIL SPECIMEN` and `LIVING SPECIMEN`, which can have misleading location information (e.g. location of captive animal).
-basis_of_record <- c(
-  "OBSERVATION", 
-  "HUMAN_OBSERVATION",
-  "MATERIAL_SAMPLE",
-  "PRESERVED_SPECIMEN", 
-  "UNKNOWN", 
-  "MACHINE_OBSERVATION",
-  "OCCURRENCE"
-)
+#basis_of_record <- c(
+#  "OBSERVATION", 
+#  "HUMAN_OBSERVATION",
+#  "MATERIAL_SAMPLE",
+#  "PRESERVED_SPECIMEN", 
+#  "UNKNOWN", 
+#  "MACHINE_OBSERVATION",
+#  "OCCURRENCE"
+#)
 
 #Time period
-year_begin <- 1971
-year_end <-2010
+#year_begin <- 1971
+#year_end <-2010
 
 #Only georeferenced points
-hasCoordinate <- TRUE
+#hasCoordinate <- TRUE
 
 
 #--------------------------------------------
 #---------------Perform download-------------
 #--------------------------------------------
 #Note that GBIF credentials are required
-gbif_download_key <- occ_download(
-  pred_in("taxonKey", accepted_taxonkeys),
-  pred_in("basisOfRecord", basis_of_record),
-  pred_gte("year", year_begin),
-  pred_lte("year", year_end),
-  pred("hasCoordinate", hasCoordinate),
-  user = rstudioapi::askForPassword("GBIF username"),
-  pwd = rstudioapi::askForPassword("GBIF password"),
-  email = rstudioapi::askForPassword("Email address for notification")
-)
+#gbif_download_key <- occ_download(
+  #pred_in("taxonKey", accepted_taxonkeys),
+  #pred_in("basisOfRecord", basis_of_record),
+  #pred_gte("year", year_begin),
+  #pred_lte("year", year_end),
+  #pred("hasCoordinate", hasCoordinate),
+  #user = rstudioapi::askForPassword("GBIF username"),
+  #pwd = rstudioapi::askForPassword("GBIF password"),
+  #email = rstudioapi::askForPassword("Email address for notification")
+#)
 
-occ_download_wait(gbif_download_key)#Check download status
+#occ_download_wait(gbif_download_key)#Check download status
 
 
 #--------------------------------------------
@@ -150,8 +150,9 @@ gbif_download_key<-metadata$key
 raw.path<- here("data", "raw", gbif_download_key)
 unzip(paste0(raw.path,".zip"),exdir=raw.path, overwrite=TRUE)
 gbif<-as.data.frame(data.table::fread(paste0(raw.path,"./occurrence.txt"),header=TRUE))
-gbif<-select(gbif, c(speciesKey,species,  decimalLatitude, decimalLongitude, kingdom, phylum, class, coordinateUncertaintyInMeters, identificationVerificationStatus))
-
+gbif<-dplyr::select(gbif, c(speciesKey,species,  decimalLatitude, decimalLongitude, kingdom, phylum, class, coordinateUncertaintyInMeters, identificationVerificationStatus))
+#TO DO: filteren op issues?
+# country coordinate mismatch vb: https://www.gbif.org/occurrence/3053598184 
 
 #--------------------------------------------
 #------ Load extra data iAsset and manual-----
