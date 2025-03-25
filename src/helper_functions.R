@@ -157,75 +157,111 @@ exportPNG<-function(rst,taxonkey,taxonName,nameextension,is.diff="FALSE"){
 #-----------------------------------------------------------------------------------
 # Generate pseudoabsences
 #-----------------------------------------------------------------------------------
-generate_pseudoabs <- function(index = NULL,mask, alternative_mask, n, p) {
+generate_pseudoabs <- function(index = NULL, mask, alternative_mask, n, p, weighted=TRUE) {
   tryf_values <- c(50,100, 150)  # tryf values to attempt in each stage
   current_raster <- mask  # Start with the initial raster layer
   
-  # Attempt to generate points
   for (tryf in tryf_values) {
-    # Generate random points
-    suppressWarnings(pseudoabs <- as.data.frame(
-      randomPoints(
-        current_raster, 
-        n, 
-        p, 
-        ext = NULL, 
-        extf = 1.1, 
-        excludep = TRUE, 
-        prob = FALSE, 
-        cellnumbers = FALSE, 
-        tryf = tryf, 
-        warn = 2, 
-        lonlatCorrection = TRUE
+    
+    # Generate points with weighted sampling
+    if (weighted==TRUE){
+      # Extract the raster values (already between 0 and 1) and use them directly as probabilities
+      raster_values <- values(current_raster)
+      raster_values[is.na(raster_values)] <- 0  # Set NA values to 0
+      
+      # Use weighted random sampling based on the raster values (which are already probabilities)
+      sampled_cells <- sample(1:length(raster_values), size = n, prob = raster_values, replace = TRUE)
+      
+      # Convert sampled cells to coordinates
+      pseudoabs <- as.data.frame(xyFromCell(current_raster, sampled_cells))
+      
+      # Exclude presence points
+      pseudoabs <- pseudoabs[!apply(pseudoabs, 1, function(x) any(apply(p, 1, function(y) all(x == y)))), ]
+      
+    } else {
+      
+      # Generate random points
+      suppressWarnings(pseudoabs <- as.data.frame(
+        randomPoints(
+          current_raster, 
+          n, 
+          p, 
+          ext = NULL, 
+          extf = 1.1, 
+          excludep = TRUE, 
+          prob = FALSE, 
+          cellnumbers = FALSE, 
+          tryf = tryf, 
+          warn = 2, 
+          lonlatCorrection = TRUE
+        )
       )
-    )
-    )
-    # Check if the number of pseudoabsences reaches required amount
+      )
+    }
+
+    # Check if the number of pseudoabsences matches the required amount
     if (nrow(pseudoabs) == n) {
-      # If index is provided, include it in the message (only for lists)
       if (!is.null(index)) {
         message(paste0(n, " out of ", n, " pseudoabsences generated while accounting for observer bias in set ", index))
       } else {
         message(paste0(n, " out of ", n, " pseudoabsences generated while accounting for observer bias."))
       }
-      return(pseudoabs)  # Return dataset if the required amount of pseudoabsences are generated
+      return(pseudoabs)  # Return the successfully generated pseudoabsences
     }
   }
   
-  # If unsuccessful with biasgrid ecoregions raster, switch to the full ecoregions raster and retry
+  # If unsuccessful with the first mask, retry using the alternative mask
   current_raster <- alternative_mask
   
   for (tryf in tryf_values) {
-    pseudoabs <- as.data.frame(
-      randomPoints(
-        current_raster, 
-        n, 
-        p, 
-        ext = NULL, 
-        extf = 1.1, 
-        excludep = TRUE, 
-        prob = FALSE, 
-        cellnumbers = FALSE, 
-        tryf = tryf, 
-        warn = 2, 
-        lonlatCorrection = TRUE
+    # Generate points with weighted sampling
+    if (weighted==TRUE){
+      # Extract the raster values (already between 0 and 1) and use them directly as probabilities
+      raster_values <- values(current_raster)
+      raster_values[is.na(raster_values)] <- 0  # Set NA values to 0
+      
+      # Use weighted random sampling based on the raster values (which are already probabilities)
+      sampled_cells <- sample(1:length(raster_values), size = n, prob = raster_values, replace = TRUE)
+      
+      # Convert sampled cells to coordinates
+      pseudoabs <- as.data.frame(xyFromCell(current_raster, sampled_cells))
+      
+      # Exclude presence points
+      pseudoabs <- pseudoabs[!apply(pseudoabs, 1, function(x) any(apply(p, 1, function(y) all(x == y)))), ]
+      
+    } else {
+      
+      # Generate random points
+      suppressWarnings(pseudoabs <- as.data.frame(
+        randomPoints(
+          current_raster, 
+          n, 
+          p, 
+          ext = NULL, 
+          extf = 1.1, 
+          excludep = TRUE, 
+          prob = FALSE, 
+          cellnumbers = FALSE, 
+          tryf = tryf, 
+          warn = 2, 
+          lonlatCorrection = TRUE
+        )
       )
-    )
+      )
+    }
     
-    # Check if the number of rows meets the desired count
+    # Check if the number of pseudoabsences matches the required amount
     if (nrow(pseudoabs) == n) {
-      # If index is provided, include it in the warning (only for lists)
       if (!is.null(index)) {
         warning(paste0(n, " out of ", n, " pseudoabsences generated without accounting for observer bias in set ", index))
       } else {
         warning(paste0(n, " out of ", n, " pseudoabsences generated without accounting for observer bias."))
       }
-      return(pseudoabs)  # Return dataset if enough pseudoabsences were generated
+      return(pseudoabs)  # Return the successfully generated pseudoabsences
     }
   }
   
   # If all attempts fail, return the last generated dataframe with fewer pseudoabsences than requested
-  # If index is provided, include it in the warning
   if (!is.null(index)) {
     warning(paste0("Could not generate the required number of pseudoabsences: ", n, " out of ", n, " pseudoabsences generated without accounting for observer bias in set ", index))
   } else {
@@ -234,6 +270,7 @@ generate_pseudoabs <- function(index = NULL,mask, alternative_mask, n, p) {
   
   return(pseudoabs)  # Return the pseudoabs data, even if incomplete
 }
+
 
 
 #-----------------------------------------------------------------------------------
@@ -375,23 +412,23 @@ confidenceMaps<-function(x,taxonkey,taxonName,maptype){
 ### Generate and export response curves in order of variable importance
 
 partial_gbm<-function(x){
-  m.gbm<-pdp::partial(bestModel$models$gbm$finalModel,pred.var=paste(x),train = bestModel.train,type="classification",
-                      prob=TRUE,n.trees= bestModel$models$gbm$finalModel$n.trees, which.class = 1,grid.resolution=nrow(bestModel.train))
+  m.gbm<-pdp::partial(ensemble_model$models$gbm$finalModel,pred.var=paste(x),train = model.train,type="classification",
+                      prob=TRUE,n.trees= ensemble_model$models$gbm$finalModel$n.trees, which.class = 1,grid.resolution=nrow(model.train))
 }
 
 partial_glm<-function(x){
-  m.glm<-pdp::partial(bestModel$models$glm$finalModel,pred.var=paste(x),train = bestModel.train,type="classification",
-                      prob=TRUE,which.class = 1,grid.resolution=nrow(bestModel.train))
+  m.glm<-pdp::partial(ensemble_model$models$glm$finalModel,pred.var=paste(x),train = model.train,type="classification",
+                      prob=TRUE,which.class = 1,grid.resolution=nrow(model.train))
 }
 
 partial_rf<-function(x){
-  pdp::partial(bestModel$models$rf$finalModel,pred.var=paste(x),train = bestModel.train,type="classification",
-               prob=TRUE,which.class = 1,grid.resolution=nrow(bestModel.train))
+  pdp::partial(ensemble_model$models$rf$finalModel,pred.var=paste(x),train = model.train,type="classification",
+               prob=TRUE,which.class = 1,grid.resolution=nrow(model.train))
 }
 
 partial_mars<-function(x){
-  m.mars<-pdp::partial(bestModel$models$earth$finalModel,pred.var=paste(x),train = bestModel.train,type="classification",
-                       prob=TRUE,which.class = 2,grid.resolution=nrow(bestModel.train)) # class=2 because in earth pkg, absense is the first class
+  m.mars<-pdp::partial(ensemble_model$models$earth$finalModel,pred.var=paste(x),train = model.train,type="classification",
+                       prob=TRUE,which.class = 2,grid.resolution=nrow(model.train)) # class=2 because in earth pkg, absense is the first class
 }
 
 

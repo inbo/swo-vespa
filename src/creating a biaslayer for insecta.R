@@ -1,7 +1,7 @@
 
-######################################
-### Creating bias layer for insects ###
-######################################
+#######################################
+### Creating bias layer for insecta ###
+#######################################
 
 # Reference: https://scottrinnan.wordpress.com/2015/08/31/how-to-construct-a-bias-file-with-r-for-use-in-maxent-modeling/
 

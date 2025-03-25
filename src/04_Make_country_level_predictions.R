@@ -2,14 +2,14 @@
 #-----------To do: specify project-----------
 #--------------------------------------------
 #specify project name
-projectname<-"Thinning50EU10nonEU"
+projectname<-"Spatial_thinning10km_nativeonly"
 
 
 #--------------------------------------------
 #-----------  Load packages  ----------------
 #--------------------------------------------
 packages <- c("viridis", "dplyr", "grid", "here", "qs","terra", "sf", "ggplot2","RColorBrewer","magick","patchwork",
-              "ape", "geoR", "raster"
+              "ape", "geoR", "raster", "pdp", "purrr"
 )
 
 for(package in packages) {
@@ -49,9 +49,15 @@ if ("caretEnsemble" %in% rownames(installed.packages())) {
 }
 
 #--------------------------------------------
-#------- Source helper fucntions     --------
+#------- Source helper functions     --------
 #--------------------------------------------
 source("./src/helper_functions.R")
+
+
+#--------------------------------------------
+#--------- Create output folder -------------
+#--------------------------------------------
+project_path <- file.path("./data/projects",projectname)
 
 
 #--------------------------------------------
@@ -67,19 +73,11 @@ country_vector <- terra::vect(country) #Convert to a SpatVector, used for maskin
 #--------------------------------------------
 #----------- Load taxa info  ----------------
 #--------------------------------------------
-taxa_info<-read.csv2(paste0("./data/projects/",projectname,"/",projectname,"_taxa_info.csv"))
+taxa_info<-read.csv2(paste0(project_path,"/taxa_info.csv"))
 accepted_taxonkeys<-taxa_info%>%
   pull(speciesKey)%>%
   unique()
 
-
-#--------------------------------------------
-#-----------Load country data----------------
-#--------------------------------------------
-#If you'd like to predict for another country, change the shapefile
-country<-st_read(here("./data/external/GIS/Belgium/belgium_boundary.shp"))
-country_ext<-terra::ext(country) 
-country_vector <- terra::vect(country) #Convert country to a SpatVector that can be used for masking
 
 
 #-------------------------------------------------
@@ -87,13 +85,6 @@ country_vector <- terra::vect(country) #Convert country to a SpatVector that can
 #-------------------------------------------------
 habitat<-list.files((here("./data/external/habitat")),pattern='tif',full.names = T)
 habitat_stack<-rast(habitat[c(1:5,7)]) #Distance to water (layer 6) has another extent
-
-
-#--------------------------------------------
-#--------- Specify folder paths -------------
-#--------------------------------------------
-raster_folder <- file.path("./data/projects", projectname, paste0(first_two_words, "_", taxonkey), "Rasters")
-PDF_folder <- file.path("./data/projects", projectname, paste0(first_two_words, "_", taxonkey), "PDFs")
 
 
 #--------------------------------------------
@@ -113,21 +104,15 @@ species<-taxa_info%>%
   pull(acceptedScientificName)%>%
   unique()
 
-#Extract first two words of species name 
-first_two_words <- sub("^(\\w+)\\s+(\\w+).*", "\\1_\\2", species)
-
-#Extract rest of species name
-rest_of_name <- sub("^\\w+\\s+\\w+\\s+(.*)", "\\1", species)
-
 #Define taxonkey
 taxonkey<- key
 
 #Read in globalmodels object that was stored as part of  script 03_fit_European_model
-eumodel<-qread( paste0("./data/projects/",projectname,"/",first_two_words,"_",taxonkey,"/EU_model_",first_two_words,"_",taxonkey,".qs"))
+eumodel<-qread( paste0("./data/projects/",projectname,"/Vespa_velutina_1311477/EU_model_Vespa_velutina_1311477.qs"))
 
 #Read in different data objects stored in globalmodels
-euocc<-eumodel$euocc1
-bestModel<-unwrap(eumodel$bestModel)
+euocc<-eumodel$euocc1 #occurrences in point geometry
+bestModel<-unwrap(eumodel$bestModel) #global_ensemble_model
 fullstack_be<-unwrap(eumodel$fullstack_be)
 
 
@@ -339,9 +324,6 @@ obs.numeric<-ifelse(predEns1$obs == "absent",0,1)
 hab.res<-stdres(obs.numeric,predEns1$present)
 
 # specify corresponding model number from eu_presabs.coord datafile to join data with xy locations. If best model is "X1", join with eu_presabs.coord$X1
-
-# TO DO: errors hier: This could occur if the spatial extent, resolution, or alignment 
-# of the habitat data differs from the presence-absence coordinates, causing problems when you try to combine them.
 res.best.coords1<-cbind(coordinates(eu_presabs.coord$X1),occ.full.data.forCaret$X1)
 removedNAs.coords<-na.omit(res.best.coords1)
 res.best.coords<-cbind(removedNAs.coords,hab.res)
@@ -430,83 +412,11 @@ brks <- seq(0, 1, by=0.1)
 nb <- length(brks)-1 
 pal <- colorRampPalette(rev(brewer.pal(4, 'Spectral')))
 set.seed(792)  
-pvalsdf_hist_eu<-classConformalPrediction(bestModel,ens_pred_hab_eu1$X6)
+pvalsdf_hist_eu<-classConformalPrediction(bestModel,ens_pred_hab_eu1)
 hist.conf.map.eu<-confidenceMaps(pvalsdf_hist_eu,taxonkey,first_two_words,maptype="hist_conf_eu")
 
 
-### Get variable importance of best european model
-
-variableImportance<-varImp(bestModel)
-kable(variableImportance,digits=2,caption="Variable Importance") %>%
-  kable_styling(bootstrap_options = c("striped"))
-write.csv(variableImportance,file = paste0(genOutput,taxonkey,"_varImp_EU_model.csv"))
-
-
-### Generate and export response curves in order of variable importance
-topPreds <- variableImportance[with(variableImportance,order(-overall)),]
-varNames<-rownames(topPreds)
-## combine predictions from each model for each variable
-## train data needs to be the training data used in the individual models used to build the ensemble model. This info can be extracted from the best ensemble model (ie. bestModel)
-bestModel.train<-bestModel$models[[1]]$trainingData
-
-
-
-
-
-gbm.partial.list<-lapply(varNames,partial_gbm)
-glm.partial.list<-lapply(varNames,partial_glm)
-rf.partial.list<-lapply(varNames,partial_rf)
-mars.partial.list<-lapply(varNames,partial_mars)
-
-
-names(glm.partial.list)<-varNames
-names(gbm.partial.list)<-varNames
-names(rf.partial.list)<-varNames
-names(mars.partial.list)<-varNames
-
-glm.partial.df<-as.data.frame(glm.partial.list)
-gbm.partial.df<-as.data.frame(gbm.partial.list)
-rf.partial.df<-as.data.frame(rf.partial.list)
-mars.partial.df<-as.data.frame(mars.partial.list)
-
-predx<-data.frame()
-predy<-data.frame()
-
-for (i in varNames){
-  predx <- rbind(predx, as.data.frame(paste(i,i,sep=".")))
-  predy<- rbind(predy,as.data.frame(paste(i,"yhat",sep=".")))
-}
-names(predx)<-""
-names(predy)<-""
-
-predx1<-t(predx)
-predy1<-t(predy)
-
-
-glm.partial.df$data<-'GLM'
-gbm.partial.df$data<-'GBM'
-rf.partial.df$data<-'RF'
-mars.partial.df$data<-'MARS'
-
-all_dfs<-rbind.data.frame(glm.partial.df,gbm.partial.df,rf.partial.df,mars.partial.df)
-allplots<-map2(predx1,predy1, ~responseCurves(.x,.y))
-
-#export plots as PNGs
-for(i in seq_along(allplots)){
-  png(paste0(genOutput,taxonkey,"_",i,".png"),width = 5, height = 5, units = "in",res=300)
-  print(allplots[[i]])
-  dev.off()
-}
-
-
-
-### Plot response curves
-
-par(mfrow=c(3,4))
-for(i in seq_along(allplots)){
-  print(allplots[[i]])
-}
-
+#Here responce curves moved to script 5
 
 ###  Evaluate the performance of each the EU level ensemble models using independent data set from the future 
 #####################################################################
