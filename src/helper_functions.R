@@ -124,7 +124,7 @@ predict_large_raster<-function(rasterstack, model, type) {
 # PDF export function
 #-----------------------------------------------------------------------------------
 exportPDF<-function(rst,taxonkey,taxonName,nameextension,is.diff="FALSE"){
-  filename=file.path(PDF_folder,paste("be_",taxonkey, "_",nameextension,sep=""))
+  filename=file.path(CountryPredictions,paste("be_",taxonkey, "_",nameextension,sep=""))
   pdf(file=filename,width=10,height=8,paper="a4r")
   par(bty="n")#to turn off box around plot
   ifelse(is.diff=="TRUE", brks<-seq(-1, 1, by=0.2), brks <- seq(0, 1, by=0.1)) 
@@ -404,7 +404,7 @@ confidenceMaps<-function(x,taxonkey,taxonName,maptype){
   rst <- rasterFromXYZ(data.xyz)
   crs(rst)<-CRS("+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +units=m +no_defs") 
   plot(rst,breaks=brks, col=cols,lab.breaks=brks)
-  writeRaster(rst, filename=file.path(raster_folder,paste("be_",taxonkey, "_",maptype,".tif",sep="")),overwrite=TRUE)
+  writeRaster(rst, filename=file.path(CountryPredictions,paste("be_",taxonkey, "_",maptype,".tif",sep="")),overwrite=TRUE)
   exportPDF(rst,taxonkey,taxonName=taxonName,nameextension= paste(maptype,".pdf",sep=""))
   return(rst)
 }

@@ -2,7 +2,7 @@
 #----To do: specify project, species, download key and thinning scenario------
 #-----------------------------------------------------------------------------
 #specify project name
-projectname<-"Buffered_occurrences_without_glm"
+projectname<-"Buffered_occurrences_FINAL"
 
 # specify the scientific name of the species to be modelled
 species<-c("Vespa velutina")
@@ -14,7 +14,8 @@ gbif_download_key<-"0023851-250127130748423"
 #--------------------------------------------
 #-----------------Load packages--------------
 #--------------------------------------------
-packages <- c("rgbif", "dplyr", "purrr", "assertthat", "readr", "here", "qs")
+packages <- c("rgbif", "dplyr", "purrr", "assertthat", "readr", "here", "qs", "GeoThinneR", 
+              "stringr", "CoordinateCleaner", "sf", "mapview", "ggplot2", "ggspatial")
 
 for(package in packages) {
   print(package)
@@ -65,7 +66,7 @@ mapped_taxa <- purrr::map_dfr(
 )
 
 
-  
+
 
 #Make sure that only species info is stored as it is possible that genus information is captured when the species part of the name is not clear
 mapped_taxa<-mapped_taxa %>%
@@ -96,7 +97,7 @@ if(nrow(not_accepted!=0)){
   synonym_taxonkeys<-mapped_taxa %>%
     dplyr::filter(status !="ACCEPTED")%>%
     pull(acceptedUsageKey)
-
+  
   accepted_taxonkeys<-c(accepted_taxonkeys, synonym_taxonkeys)
 } 
 
@@ -109,39 +110,39 @@ accepted_taxonkeys<-unique(accepted_taxonkeys)
 #--------------------------------------------
 if (gbif_download_key==FALSE){
   
-#All basis of record types, except `FOSSIL SPECIMEN` and `LIVING SPECIMEN`, which can have misleading location information (e.g. location of captive animal).
-basis_of_record <- c(
-  "OBSERVATION", 
-  "HUMAN_OBSERVATION",
-  "UNKNOWN", 
-  "MACHINE_OBSERVATION",
-  "OCCURRENCE"
-)
-
-#Time period
-year_begin <- 1971
-year_end <-2025
-
-#Only georeferenced points
-hasCoordinate <- TRUE
-
-
-#--------------------------------------------
-#---------------Perform download-------------
-#--------------------------------------------
-#Note that GBIF credentials are required
-gbif_download_key <- occ_download(
-  pred_in("taxonKey", accepted_taxonkeys),
-  pred_in("basisOfRecord", basis_of_record),
-  pred_gte("year", year_begin),
-  pred_lte("year", year_end),
-  pred("hasCoordinate", hasCoordinate),
-  user = rstudioapi::askForPassword("GBIF username"),
-  pwd = rstudioapi::askForPassword("GBIF password"),
-  email = rstudioapi::askForPassword("Email address for notification")
-)
-
-occ_download_wait(gbif_download_key)#Check download status
+  #All basis of record types, except `FOSSIL SPECIMEN` and `LIVING SPECIMEN`, which can have misleading location information (e.g. location of captive animal).
+  basis_of_record <- c(
+    "OBSERVATION", 
+    "HUMAN_OBSERVATION",
+    "UNKNOWN", 
+    "MACHINE_OBSERVATION",
+    "OCCURRENCE"
+  )
+  
+  #Time period
+  year_begin <- 1971
+  year_end <-2025
+  
+  #Only georeferenced points
+  hasCoordinate <- TRUE
+  
+  
+  #--------------------------------------------
+  #---------------Perform download-------------
+  #--------------------------------------------
+  #Note that GBIF credentials are required
+  gbif_download_key <- occ_download(
+    pred_in("taxonKey", accepted_taxonkeys),
+    pred_in("basisOfRecord", basis_of_record),
+    pred_gte("year", year_begin),
+    pred_lte("year", year_end),
+    pred("hasCoordinate", hasCoordinate),
+    user = rstudioapi::askForPassword("GBIF username"),
+    pwd = rstudioapi::askForPassword("GBIF password"),
+    email = rstudioapi::askForPassword("Email address for notification")
+  )
+  
+  occ_download_wait(gbif_download_key)#Check download status
 } else {
   gbif_download_key<-"0023851-250127130748423"
 }
@@ -281,7 +282,7 @@ europe.occ_sf <- europe.occ_sf %>%
     decimalLongitude = st_coordinates(.)[, 1],
     decimalLatitude = st_coordinates(.)[, 2])
 fig_velutina_europe<-mapview(europe.occ_sf,
-           layer.name = "Species distribution")
+                             layer.name = "Species distribution")
 fig_velutina_europe
 mapshot(fig_velutina_europe, url = file.path(project_path, "occurrences_map_Europe.html"))
 
@@ -298,7 +299,7 @@ noneurope.occ_sf <- noneurope.occ_sf %>%
     decimalLatitude = st_coordinates(.)[, 2])
 
 fig_velutina_noneurope<-mapview(noneurope.occ_sf,
-                             layer.name = "Species distribution")
+                                layer.name = "Species distribution")
 fig_velutina_noneurope
 mapshot(fig_velutina_noneurope, url = file.path(project_path, "occurrences_map_nonEurope.html"))
 
@@ -310,8 +311,8 @@ print(paste("Before thinning, there are", length(europe.occ_sf$decimalLongitude)
 #--------------------------------------------
 
 
-# Scenario 1: 50 km in invaded, 10 km in native
-scenario<-1
+# 50 km thinning in invaded, 10 km in native
+
 thinned_50km_Europe<- thin_points(
   data = Europe, # Dataframe with coordinates
   long_col = "decimalLongitude", # Longitude column name
@@ -331,7 +332,7 @@ thinned_10km_nonEurope<- thin_points(
   all_trials = TRUE # Return all trials
 )
 
-print(paste("After thinning scenario 1, there are", length(thinned_50km_Europe[[1]]$decimalLongitude), "occurrences in invaded range (Europe) and", length(thinned_10km_nonEurope[[1]]$decimalLongitude), "in the native range (Asia)"))
+print(paste("After thinning, there are", length(thinned_50km_Europe[[1]]$decimalLongitude), "occurrences in invaded range (Europe) and", length(thinned_10km_nonEurope[[1]]$decimalLongitude), "in the native range (Asia)"))
 
 europe50.occ_sf <- st_as_sf(thinned_50km_Europe[[1]], coords = c("decimalLongitude", "decimalLatitude"), crs = 4326)
 europe50.occ_sf <- europe50.occ_sf %>%
@@ -360,45 +361,13 @@ plot_thinned_noneurope_10 <- ggplot() +
 plot_thinned_noneurope_10
 
 
-#Scenario 2: Thinning 50km in both areas
-#scenario <- 2
-thinned_50km_nonEurope<- thin_points(
-  data = nonEurope, # Dataframe with coordinates
-  long_col = "decimalLongitude", # Longitude column name
-  lat_col = "decimalLatitude", # Latitude column name
-  method = "grid",  # Method for thinning
-  thin_dist = 50,  # Thinning distance in km,
-  trials = 1, # Number of reps
-  all_trials = TRUE # Return all trials
-)
 
-print(paste("After thinning scenario 2, there are", length(thinned_50km_Europe[[1]]$decimalLongitude), "occurrences in invaded range (Europe) and", length(thinned_50km_nonEurope[[1]]$decimalLongitude), "in the native range (Asia)"))
+thinned_global<-rbind(thinned_50km_Europe[[1]], thinned_10km_nonEurope[[1]])
+thinned_Europe <-thinned_50km_Europe[[1]]
+thinned_nonEurope <-thinned_10km_nonEurope[[1]]
 
-noneurope50.occ_sf <- st_as_sf(thinned_50km_nonEurope[[1]], coords = c("decimalLongitude", "decimalLatitude"), crs = 4326)
-noneurope50.occ_sf <- noneurope50.occ_sf %>%
-  mutate(
-    decimalLongitude = st_coordinates(.)[, 1],
-    decimalLatitude = st_coordinates(.)[, 2])
-plot_thinned_noneurope_50 <- ggplot() +
-  annotation_map_tile(type = "osm") +
-  geom_sf(data = noneurope50.occ_sf, aes(color = "red"), size = 0.5) +
-  theme_minimal() +
-  labs(title = "Thinned Locations non-Europe (50km)", color = "Hornet Data") +
-  theme(legend.position = "none")
-plot_thinned_noneurope_50
 
-if (scenario==1){
-  thinned_global<-rbind(thinned_50km_Europe[[1]], thinned_10km_nonEurope[[1]])
-  thinned_Europe <-thinned_50km_Europe[[1]]
-  thinned_nonEurope <-thinned_10km_nonEurope[[1]]
-} else {
-  thinned_global<-rbind(thinned_50km_Europe[[1]], thinned_50km_nonEurope[[1]])
-  thinned_Europe <-thinned_50km_Europe[[1]]
-  thinned_nonEurope <-thinned_50km_nonEurope[[1]]
-  
-}
-  
-  
+
 
 
 #--------------------------------------------
@@ -418,7 +387,6 @@ qsave(global, paste0(project_path,"/global_occurrences.qs"))
 qsave(Europe, paste0(project_path,"/Europe_occurrences.qs"))
 qsave(nonEurope, paste0(project_path,"/nonEurope_occurrences.qs"))
 
-#TO DO: Choose here the right thinned data
 qsave(thinned_global, paste0(project_path,"/thinned_global_occurrences.qs"))
 qsave(thinned_Europe, paste0(project_path,"/thinned_Europe_occurrences.qs"))
 qsave(thinned_nonEurope, paste0(project_path,"/thinned_nonEurope_occurrences.qs"))

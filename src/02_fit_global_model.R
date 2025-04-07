@@ -2,13 +2,8 @@
 #------To do: specify project & dataset------
 #--------------------------------------------
 #specify project name
-projectname<-"Standard_wisdm_without_glm"
+projectname<-"Buffered_occurrences_FINAL"
 
-#specify dataset
-
-data<-"Global"
-#data<-"Europe"
-#data<-"nonEurope"
 
 #--------------------------------------------
 #--------- Create output folder -------------
@@ -27,7 +22,7 @@ options("rgdal_show_exportToProj4_warnings"="none")
 packages <- c( "devtools", "dplyr", "stringr", "here", "qs","CoordinateCleaner","terra", "raster", "sf", "rnaturalearth", "rnaturalearthdata", 
                "ggplot2","ggspatial", "tidyterra","mapview", "dismo", "sdm", "caret", "viridisLite", "kableExtra","future", "future.apply",
                "earth", "randomForest", "GeoThinneR"
-               )
+)
 
 for(package in packages) {
   print(package)
@@ -68,17 +63,9 @@ source("./src/helper_functions.R")
 #--------------------------------------------
 #--- Load global occurrences and taxa info---
 #--------------------------------------------
-if (data=="Global"){
-  global.occ<-qread( paste0(project_path,"/thinned_global_occurrences.qs"))
-}
+global.occ<-qread( paste0(project_path,"/thinned_global_occurrences.qs"))
 
-if (data=="Europe"){
-  global.occ<-qread( paste0(project_path,"/thinned_Europe_occurrences.qs"))
-}
 
-if (data=="nonEurope"){
-  global.occ<-qread( paste0(project_path,"/thinned_nonEurope_occurrences.qs"))
-}
 
 taxa_info<-read.csv2(paste0(project_path,"/taxa_info.csv"))
 accepted_taxonkeys<-taxa_info%>%
@@ -126,6 +113,16 @@ eu_climpreds<-rast(euclimrasters)
 eu_climpreds.10<-divide10(eu_climpreds)  # correct for integer format of Chelsa preds
 
 
+#---------------------------------------------
+#-- Remove NA pixels from climate rasters ----
+#---------------------------------------------
+#This is to avoid that some layers have NA while others have values in certain pixels
+#Mask pixels in the rasterstack where at least one layer has NA
+na_mask_globalclimpreds_terra<- app(globalclimpreds_terra, function(x) any(is.na(x)))
+na_mask_eu_climpreds.10<- app(eu_climpreds.10, function(x) any(is.na(x)))
+globalclimpreds_terra<- mask(globalclimpreds_terra, na_mask_globalclimpreds_terra, maskvalue=1)
+eu_climpreds.10<- mask(eu_climpreds.10, na_mask_eu_climpreds.10, maskvalue=1)
+
 #--------------------------------------------
 #--------- Load shape of the world ----------
 #--------------------------------------------
@@ -147,12 +144,6 @@ bias_grid_paths <- list(
 #TO DO: smooth op 1km runnen
 #TO DO: sampbias runnen combined_global_bias.tif
 
-#--------------------------------------------
-#------- Split dataframe by taxonkey --------
-#--------------------------------------------
-#sort(unique(thinned_10km_nonEurope[[1]]$species))
-#split_df<-split(thinned_10km_nonEurope[[1]],thinned_10km_nonEurope[[1]]$species) 
-
 
 #--------------------------------------------
 #---------------- Clean up ------------------
@@ -169,9 +160,9 @@ species<-unique(global.occ.LL.cleaned$species)
 taxonkey<-unique(global.occ.LL.cleaned$speciesKey)
 speciesgroup<-unique(global.occ.LL.cleaned$Group)
 global.occ.LL.cleaned<-global.occ.LL.cleaned %>%
-    dplyr::select(c(decimalLongitude,decimalLatitude))
-    
-    
+  dplyr::select(c(decimalLongitude,decimalLatitude))
+
+
 
 #--------------------------------------------
 #------ Remove duplicates per grid cell -----
@@ -212,7 +203,7 @@ occurrences_map
 ggsave(filename = "occurrences_map.png", plot = occurrences_map, 
        device = "png", width =16 , height = 20, path= GlobalModelOutput)
 
-    
+
 #--------------------------------------------
 #- Select ecoregions containing occurrences -
 #--------------------------------------------
@@ -222,20 +213,20 @@ wwf_eco<-sf::st_transform(wwf_eco, 4326) %>%
 occ_ecoIntersect <- sf::st_intersects(wwf_eco,global.occ.sf) 
 wwf_ecoSub1<-wwf_eco[lengths(occ_ecoIntersect) > 0,1]
 wwf_ecoSub1<-st_as_sf(st_geometry(wwf_ecoSub1))
-  
+
 #hier even weggeschreven en in ArcMap ingeladen: 2° buffer
 
 #enkel Azië bufferen
 
-Asia_buffered<-sf::st_read(here("./data/external/GIS/official/selected_ecoregions_buffered.shp"))
-Asia_buffered <- st_as_sf(st_geometry(Asia_buffered))
-wwf_ecoSub1<-rbind(wwf_ecoSub1, Asia_buffered)
+#Asia_buffered<-sf::st_read(here("./data/external/GIS/official/selected_ecoregions_buffered.shp"))
+#Asia_buffered <- st_as_sf(st_geometry(Asia_buffered))
+#wwf_ecoSub1<-rbind(wwf_ecoSub1, Asia_buffered)
 
 # Europa gebufferd rond occurrences, Azië rond ecoregions
 
-#global_buffered<-sf::st_read(here("./data/external/GIS/official/GLOBAL_DISPERSAL_MASK.shp"))
-#global_buffered <- st_as_sf(st_geometry(global_buffered))
-#wwf_ecoSub1<-global_buffered
+global_buffered<-sf::st_read(here("./data/external/GIS/official/GLOBAL_DISPERSAL_MASK.shp"))
+global_buffered <- st_as_sf(st_geometry(global_buffered))
+wwf_ecoSub1<-global_buffered
 
 
 #--------------------------------------------
@@ -262,7 +253,7 @@ if (speciesgroup %in% names(bias_grid_paths)) {
   stop("No bias grid available for this species. Species has to be one of the following: Plants, Amphibians, Birds, Mammals, Molluscs, or Reptiles.")
 }
 
-    
+
 #--------------------------------------------
 #Mask biasgrid by ecoregions with occurrences 
 #--------------------------------------------
@@ -270,13 +261,13 @@ wwf_ecoSub1_ext<-terra::ext(wwf_ecoSub1)
 wwf_ecoSub1_vector <- vect(wwf_ecoSub1) #Convert wwf_ecoSub1 to a SpatVector that can be used for masking
 biasgrid_crop <- terra::crop(biasgrid, wwf_ecoSub1_ext) #Crop biasgrid to extent wwf_ecoSub1
 biasgrid_sub <- terra::mask(biasgrid_crop, wwf_ecoSub1_vector)#Mask cropped biasgrid with SpatVector
-  
+
 #Mask biasgrid with one of the climatic layers, to make sure it doesn't extend beyond them
 climategrid_rast<-terra::crop(globalclimpreds_terra[[1]], wwf_ecoSub1_ext)
 
 # Resample biasgrid_sub to match the resolution of climategrid_rast
 biasgrid_sub_resampled <- terra::resample(biasgrid_sub, climategrid_rast, method = "bilinear")
-    
+
 # Now mask the resampled biasgrid_sub with climategrid_rast
 biasgrid_sub <- terra::mask(biasgrid_sub_resampled, climategrid_rast)
 
@@ -334,33 +325,33 @@ global_pseudoAbs<-global_points %>%
   st_as_sf(coords=c("x", "y"), crs=4326, remove=FALSE)%>%
   dplyr::rename(decimalLongitude=x,
                 decimalLatitude=y)
-    
+
 global_presabs<- rbind(global.occ.sf,global_pseudoAbs)# join pseudoabsences with presences 
 rm(global_points)
 
-    
+
 #--------------------------------------------
 #--Visualize presence-pseudoabsence dataset--
 #--------------------------------------------
 m<-mapview(biasgrid_sub_raster, 
-        col.regions = colorRampPalette(c("blue", "orange")),
-        alpha=1, 
-        na.color = "transparent", 
-        layer.name = "Bias Grid") +
+           col.regions = colorRampPalette(c("blue", "orange")),
+           alpha=1, 
+           na.color = "transparent", 
+           layer.name = "Bias Grid") +
   mapview(global_presabs, zcol = "species", 
           col.regions = c("red", "yellow"),
           layer.name = "Species distribution")
 m
 mapshot(m, url = file.path(GlobalModelOutput, "presence-pseudoabsence_map.html"))
-    
-    
+
+
 #--------------------------------------------
 #---- Extract climate data for modelling-----
 #--------------------------------------------
 global.data <- sdm::sdmData(species~.,train=vect(global_presabs),predictors=globalclimpreds_terra) 
 global.data.df<-as.data.frame(global.data)
 
-    
+
 #--------------------------------------------
 #--- Remove highly correlated predictors---
 #--------------------------------------------
@@ -370,7 +361,7 @@ highlyCorrelated <- findCorrelation(correlationMatrix, cutoff=0.7,exact=TRUE,nam
 preds<-as.data.frame(highlyCorrelated)
 kable(preds) %>%
   kable_styling(bootstrap_options = c("striped"))
-    
+
 # Remove highly correlated predictors from dataframe 
 global.data.df.subset<- global.data.df %>%
   dplyr::select (-all_of(highlyCorrelated), -rID) %>% 
@@ -380,13 +371,17 @@ global.data.df.subset<- global.data.df %>%
                                  '1' = "present")) %>%  # Later steps require non numeric dependent variable
   mutate(species = relevel(species, ref = "present")) 
 
-    
+#Remove them from climate stack
+eu_climpreds.10_selection<-eu_climpreds.10%>%
+  subset(!names(eu_climpreds.10) %in% highlyCorrelated)
+
+
 #--------------------------------------------
 #--Correct climate data from integer format--
 #--------------------------------------------
 global.data.df.uncor<-cbind("species"=  global.data.df.subset$species,divide10(global.data.df.subset[,-c(1)]))
 
-    
+
 #--------------------------------------------
 #--- Run multiple machine learning models ---
 #--------------------------------------------
@@ -405,18 +400,18 @@ global_train <- caretEnsemble::caretList(species~.,
                                          trControl=control,
                                          methodList=classList1,
                                          metric="Accuracy")
-  
-    
+
+
 #--------------------------------------------
 #--Return accurracy, kappa and correlation --
 #--------------------------------------------
 GlobalModelResults<-resamples(global_train) #Returns the results for each model 
-    
+
 # Display accuracy of each model
 Global.Mod.Accuracy<-summary(GlobalModelResults)
 kable(Global.Mod.Accuracy$statistics$Accuracy,digits=2) %>%
   kable_styling(bootstrap_options = c("striped"))
-    
+
 # Display kappa of each model
 kable(Global.Mod.Accuracy$statistics$Kappa,digits=2) %>%
   kable_styling(bootstrap_options = c("striped"))
@@ -426,8 +421,8 @@ kable(Global.Mod.Accuracy$statistics$Kappa,digits=2) %>%
 Global.Mod.Cor<-modelCor(resamples(global_train))
 kable(Global.Mod.Cor,digits=2)%>%
   kable_styling(bootstrap_options = c("striped"))
-    
-    
+
+
 #--------------------------------------------
 #---------- Create ensemble model -----------
 #--------------------------------------------
@@ -441,8 +436,8 @@ global_stack <- caretEnsemble(
                          savePredictions= "final",
                          classProbs=TRUE))
 print(global_stack)
-  
-    
+
+
 #--------------------------------------------
 #Identify best threshold and get accurracy
 #--------------------------------------------
@@ -451,29 +446,29 @@ global.ens.thresh<-findThresh(global_stack$ens_model$pred)
 #Return accurracy
 ensemble_accurracy<-accuracyStats(global_stack$ens_model$pred,global.ens.thresh$predicted)
 
-    
+
 #--------------------------------------------
 #-- Get variable importance of global model--
 #--------------------------------------------
 variableImportance_global<-varImp(global_stack)
 kable(variableImportance_global,digits=2,caption="Variable Importance") %>%
   kable_styling(bootstrap_options = c("striped"))
-  
-    
+
+
 #--------------------------------------------
 #------------------ Clean up-----------------
 #--------------------------------------------
 #rm(list = setdiff(ls(), c("biasgrid", "wwf_eco", "eu_climpreds.10", "global_stack", "GlobalModelOutput", "taxonkey", "species", "ensemble_accurracy", "accuracyStats", "decimalplaces", "divide10", "findThresh", "predict_large_raster", "globalclimpreds_terra","bias_grid_paths", "i", "globalmodels","global.occ.sf", "biasgrid_sub", "world", "projectname", "first_two_words", "generate_pseudoabs", "variableImportance_global", "thinning_data")))
-    
+
 
 #--------------------------------------------
 #-------- Make predictions for Europe--------
 #--------------------------------------------
 system.time({
-  global_model <- predict(eu_climpreds.10,global_stack,type="prob", na.rm = TRUE) #235.05
+  global_model <- predict(eu_climpreds.10_selection,global_stack,type="prob", na.rm = TRUE) #235.05
 })
-    
-    
+
+
 #--------------------------------------------
 #-------------- Plot predictions-------------
 #--------------------------------------------
@@ -493,44 +488,8 @@ predictions<-ggplot() +
 predictions    
 ggsave(filename = "predictions.png", plot = predictions, 
        device = "png", width =16 , height = 20, path= GlobalModelOutput)
-  
-    
 
-#Als je niet alle data hebt gebruikt voor het globale model, hier terug alles samengooien
-if (data!="Global"){
-  global.occ<-qread( paste0(project_path,"/thinned_global_occurrences.qs"))
-  global.occ.LL.cleaned<-data.frame(global.occ)[c(4,3)] #decimalLon, decimalLat, species, acceptedtaxonkey, Group
-  
-#--------------------------------------------
-#------ Remove duplicates per grid cell -----
-#--------------------------------------------
-global.occ.LL.cleaned$cell<-terra::cellFromXY( globalclimpreds_terra, global.occ.LL.cleaned) #Indicate for each occurrence point in which cell of the raster it falls
-global.occ.LL.cleaned<-global.occ.LL.cleaned[!is.na(global.occ.LL.cleaned$cell),]
-unique_occurrences <- !duplicated(global.occ.LL.cleaned$cell)# Identify unique occurrences
-global.occ.LL.cleaned <- global.occ.LL.cleaned[unique_occurrences, 1:2] # Subset the occurrence points to keep only one occurrence per raster cell 
 
-global.occ.LL.cleaned<- terra::extract(globalclimpreds_terra, global.occ.LL.cleaned, xy = T, ID=F)%>%
-  dplyr::filter(rowSums(is.na(.[, 1:(ncol(.) - 2)])) == 0)%>% #Keep rows that do not have any NA values in column 1- 3rd last 
-  dplyr::select(c(x,y))%>%
-  dplyr::rename(decimalLongitude=x,
-                decimalLatitude=y) #Extract climatic values of occurrence points from each raster layer and remove occurrence points that fall in cells with NA values in at least one rasterlayer
-
-#Convert to sf dataframe
-global.occ.LL.cleaned$species<- rep(1,length(global.occ.LL.cleaned$decimalLongitude)) #adds columns indicating species presence (1) needed for modeling
-global.occ.sf<-st_as_sf(global.occ.LL.cleaned, coords=c("decimalLongitude", "decimalLatitude"), crs=4326, remove= FALSE)
-
-occ_ecoIntersect <- sf::st_intersects(wwf_eco,global.occ.sf) 
-wwf_ecoSub1<-wwf_eco[lengths(occ_ecoIntersect) > 0,1]
-
-#--------------------------------------------
-#Mask biasgrid by ecoregions with occurrences 
-#--------------------------------------------
-wwf_ecoSub1_ext<-terra::ext(wwf_ecoSub1) 
-wwf_ecoSub1_vector <- vect(wwf_ecoSub1) #Convert wwf_ecoSub1 to a SpatVector that can be used for masking
-biasgrid_crop <- terra::crop(biasgrid, wwf_ecoSub1_ext) #Crop biasgrid to extent wwf_ecoSub1
-biasgrid_sub <- terra::mask(biasgrid_crop, wwf_ecoSub1_vector)#Mask cropped biasgrid with SpatVector
-
-}
 
 
 #--------------------------------------------
@@ -554,8 +513,8 @@ print(paste("Global model has been created for", species))
 #------------ Open output qs file -----------
 #--------------------------------------------
 
-projectname<-"Standaar_run_gradualPA"
-projectname<-"Global_dispersal"
+
+projectname<-"Buffered_occurrences_FINAL"
 project_path <- file.path("./data/projects",projectname)
 GlobalModelOutput<-paste0(project_path,"/GlobalModelOutput")
 

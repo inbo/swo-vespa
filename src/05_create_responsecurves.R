@@ -2,7 +2,7 @@
 #-----------To do: specify project-----------
 #--------------------------------------------
 #specify project name
-projectname<-"Standard_wisdm_without_glm"
+projectname<-"Buffered_occurrences_FINAL"
 
 #For which model do you want to create response curves?
 model<-"Global"

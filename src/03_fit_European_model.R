@@ -2,13 +2,7 @@
 #------To do: specify project & dataset------
 #--------------------------------------------
 #specify project name
-projectname<-"Standard_wisdm_without_glm"
-
-#specify dataset
-
-data<-"Global"
-#data<-"Europe"
-#data<-"nonEurope"
+projectname<-"Buffered_occurrences_FINAL"
 
 
 #--------------------------------------------
@@ -94,6 +88,14 @@ euboundary<-st_read(here("./data/external/GIS/Europe/EUROPE.shp"))
 globalclimrasters <- list.files((here("./data/external/climate/trias_CHELSA")),pattern='tif',full.names = T) #import CHELSA data
 globalclimpreds_terra <- terra::rast(globalclimrasters)
 
+
+#--------------------------------------------
+#-------- Load European habitat rasters -----
+#--------------------------------------------
+habitat_files<-list.files((here("./data/external/habitat")),pattern='tif',full.names = T)
+habitat_stack<-rast(habitat_files[c(1:5,7)]) #Distance to water (layer 6) has another extent
+
+
 #--------------------------------------------
 #-------- Load European climate rasters -----
 #--------------------------------------------
@@ -102,34 +104,20 @@ rmiclimrasters
 rmiclimpreds<-rast(rmiclimrasters) 
 
 
-#--------------------------------------------
-#-------- Load European habitat rasters -----
-#--------------------------------------------
-habitat_files<-list.files((here("./data/external/habitat")),pattern='tif',full.names = T)
-habitat_stack<-rast(habitat_files[c(1:5,7)]) #Distance to water (layer 6) has another extent
+#---------------------------------------------
+#----- Remove NA pixels from predictors ------
+#---------------------------------------------
+#This is to avoid that some layers have NA while others have values in certain pixels
+#First mask pixels in the rasterstack where at least one layer has NA
+na_mask_rmiclimpreds <- app(rmiclimpreds, function(x) any(is.na(x)))
+na_mask_habitat_stack<- app(habitat_stack, function(x) any(is.na(x)))
+rmiclimpreds<- mask(rmiclimpreds, na_mask_rmiclimpreds, maskvalue=1)
+habitat_stack<- mask(habitat_stack, na_mask_habitat_stack, maskvalue=1)
 
-#rasters <- lapply(habitat_files, raster)
+#Second mask rmiclimpreds with habitat_stack and vice versa
+rmiclimpreds<-mask(rmiclimpreds, habitat_stack[[1]])
+habitat_stack<-mask(habitat_stack, rmiclimpreds[[1]])
 
-# Calculate the common extent by determining the minimum and maximum x and y coordinates
-#min_x <- min(sapply(rasters, function(r) extent(r)[1]))
-#max_x <- max(sapply(rasters, function(r) extent(r)[2]))
-#min_y <- min(sapply(rasters, function(r) extent(r)[3]))
-#max_y <- max(sapply(rasters, function(r) extent(r)[4]))
-
-# Create the common extent using the min/max values
-#common_extent <- extent(min_x, max_x, min_y, max_y)
-
-# Create a template raster with the common extent and the CRS of the first raster
-# To create an empty raster with this extent and the same CRS, we use nrows and ncols from any of the rasters
-#template_raster <- raster(xmn = common_extent[1], xmx = common_extent[2], ymn = common_extent[3], ymx = common_extent[4], crs = crs(rasters[[1]]))
-
-# Resample all rasters to the common extent and resolution of the template raster
-#resampled_rasters <- lapply(rasters, function(r) {
-#  resample(r, template_raster, method = "bilinear")
-#})
-
-# Now create a raster stack
-#habitat_stack <- rast(stack(resampled_rasters))
 
 
 #--------------------------------------------
@@ -197,21 +185,28 @@ global.occ.sf<-st_as_sf(global.occ.LL.cleaned, coords=c("decimalLongitude", "dec
 
 
 
-#--------------------------------------------
-#--  Create European subset of occurrences --
-#--------------------------------------------
-eu_occ<-st_join(euboundary, global.occ.sf)%>%
-  dplyr::select(decimalLatitude, decimalLongitude, species)%>%
-  filter(!is.na(decimalLatitude))%>%
-  st_drop_geometry()
+#-----------------------------------------------
+#----- Create subset of European records -------
+#-----------------------------------------------
+#Check for occurrences that fall within Europe
+eu_occ <- global.occ.sf[st_intersects(global.occ.sf, euboundary, sparse = FALSE), ] %>%
+  dplyr::select(decimalLatitude, decimalLongitude, species) %>%
+  dplyr::filter(!is.na(decimalLatitude))%>%
+  sf::st_transform(crs=st_crs(rmiclimpreds))
 
+# Convert to crs of rmiclimpreds
+eu_occ<-eu_occ%>%
+  st_coordinates()%>%
+  cbind(., eu_occ)%>%
+  select(-c(decimalLatitude, decimalLongitude))
 
+#Only keep occurrences in pixels that have predictor data (not NA's)
+extracted_value <- terra::extract(rmiclimpreds[[1]], vect(eu_occ))
+eu_occ$extracted_value<-extracted_value[,2]
+eu_occ <- eu_occ[!is.na(eu_occ$extracted_value), ]
 
-#--------------------------------------------
-#---Put eu occurrences in right sf dataset --
-#--------------------------------------------
-euocc <- st_as_sf(eu_occ, coords=c("decimalLongitude", "decimalLatitude"), crs= 4326, remove=FALSE)  %>%
-  st_transform(crs=st_crs(rmiclimpreds))%>%
+# Keep XY coordinates
+euocc<-eu_occ%>%
   st_coordinates()
 
 
@@ -247,7 +242,7 @@ ggsave(filename = "biasgrid_map.png", plot = biasgrid_map,
 global_model_proj<-project(global_model, biasgrid_eu)
 
 #New: mask with one of the environmental layers to make sure no pseudoabsences are generated outside the environmental layers
-#CUTOFFglobal_masked_proj<-terra::mask(global_masked_proj, rmiclimpreds[[1]]) 
+global_model_proj<-terra::mask(global_model_proj, rmiclimpreds[[1]]) 
 
 
 #--------------------------------------------
@@ -260,7 +255,7 @@ pseudoSamplingArea<-mask(global_model_proj,biasgrid_eu)
 # make sure PA's are not sampled within cells with occurrences
 alldata_Europe<-qread( paste0(project_path,"/Europe_occurrences.qs"))
 alldata_Europe_sf <- st_as_sf(alldata_Europe, coords = c("decimalLongitude", "decimalLatitude"), crs=4326)%>%
- st_transform(crs=st_crs(rmiclimpreds))
+  st_transform(crs=st_crs(rmiclimpreds))
 alldata_Europe_raster <- rast(ext(pseudoSamplingArea), resolution = res(pseudoSamplingArea))
 alldata_Europe_raster <- rasterize(alldata_Europe_sf, alldata_Europe_raster, field = 1, background = NA)
 crs(alldata_Europe_raster) <- crs(rmiclimpreds)
@@ -318,14 +313,14 @@ eu_presabs.pts<-lapply(pseudoabs_pts2,  function(x) rbind(x, presence1))
 eu_presabs.coord<-lapply(pseudoabs_pts, function(x) rbind(x,presence))
 
 
+
 #--------------------------------------------
 #--Visualize presence-pseudoabsence dataset--
 #--------------------------------------------
-pseudoabs_sf <- st_as_sf(pseudoabs_pts$X1, coords = c("x", "y"), crs=st_crs(rmiclimpreds))%>%
-  st_transform(crs = 4326)
-euocc_sf <- st_as_sf(eu_occ, coords = c("decimalLongitude", "decimalLatitude"), crs=4326)
-pseudoabs_sf$species <- 0
-euocc_sf$species<-1
+pseudoabs_sf <- st_as_sf(pseudoabs_pts$X1, coords = c("x", "y"), crs=st_crs(rmiclimpreds))
+euocc_sf <- st_as_sf(eu_occ, coords = c("decimalLongitude", "decimalLatitude"), crs=4326 )%>%
+  select('geometry', 'species')
+pseudoabs_sf$species<-0
 eu_presabs_sf<-rbind(pseudoabs_sf, euocc_sf)
 m<-mapview(pseudoSamplingArea_reverse, 
            col.regions = colorRampPalette(c("blue", "orange")),
@@ -339,25 +334,23 @@ m<-mapview(pseudoSamplingArea_reverse,
 m
 mapshot(m, url = file.path(EuropeanModelOutput, "presence-pseudoabsence_map.html"))
 
- 
+
+
 #--------------------------------------------
 #--Remove highly correlated predictors from training data --
 #--------------------------------------------
 # convert eu data to dataframe
 eu_presabs.pts.df<-lapply(eu_presabs.pts,function(x) as.data.frame(x))
 
-# find attributes that are highly corrected 
-highlyCorrelated_climate <-lapply(names(eu_presabs.pts.df),function(x) findCorrelation(cor(eu_presabs.pts.df[[x]],use = 'complete.obs'), cutoff=0.7,exact=TRUE,names=TRUE))
+# find attributes that are highly corrected
+highlyCorrelated_climate <-lapply(eu_presabs.pts.df, function(df) as.data.frame(cor(df[, 1:13], use = "complete.obs")))
 
-highlyCorrelated_climate 
-eupreds<-as.data.frame(highlyCorrelated_climate[1])
-kable(eupreds) %>%
-  kable_styling(bootstrap_options = c("striped"))
+#Calculate the mean correlation over the 10 datsets and identify highly correlated variables
+mean_correlation_matrix <- Reduce("+", highlyCorrelated_climate) / length(highlyCorrelated_climate)
+drop_climate<-findCorrelation(as.matrix(mean_correlation_matrix), cutoff=0.7,exact=TRUE,names=TRUE)
 
-# Remove first set of highly correlated climate predictors
-drop_climate<-highlyCorrelated_climate[[1]]
-keep_layers <- !(names(rmiclimpreds) %in% drop_climate)
-rmiclimpreds_uncor <- subset(rmiclimpreds, keep_layers)
+#Only keep layers that are not highly correlated
+rmiclimpreds_uncor <- subset(rmiclimpreds, !(names(rmiclimpreds) %in% drop_climate))
 
 
 #--------------------------------------------
@@ -421,26 +414,16 @@ occ.full.data.df<- sapply(names(occ.full.data.df), function (x) cbind(occ.full.d
 #Recode factor levels of column 'occ' to absent (0) and present(1), and set present as the reference level
 occ.full.data.factor<-sapply(names(occ.full.data.df), function (x) factorVars(occ.full.data.df[[x]], "occ"),simplify=FALSE)
 
-#Replace NA values with 0 in all columns 
-occ.full.data.forCaret<-sapply(names(occ.full.data.factor), function (x) replace(occ.full.data.factor[[x]], is.na(occ.full.data.factor[[x]]),0),simplify=FALSE)
 
 
 #--------------------------------------------
 #- Run models with climate and habitat data -
 #--------------------------------------------
-# method = LOOCV (aka "jacknife" ) should be used when occurrences are smaller than n=10 for each predictor in the model)
-if(nrow(presence)<10){
-  control<-trainControl(method="LOOCV",
+control <- trainControl(method="cv",
+                        number=4,
                         savePredictions="final", 
                         preProc=c("center","scale"),
-                        classProbs=TRUE) 
-}else{
-  control <- trainControl(method="cv",
-                          number=4,
-                          savePredictions="final", 
-                          preProc=c("center","scale"),
-                          classProbs=TRUE)
-}
+                        classProbs=TRUE)
 
 mylist<-list(
   #glm =caretModelSpec(method = "glm",maxit=100),
@@ -449,9 +432,9 @@ mylist<-list(
   earth= caretModelSpec(method = "earth"))
 
 # set.seed(167)
-eu_models<-sapply(names(occ.full.data.forCaret), function(x) model_train_habitat <- caretList(
+eu_models<-sapply(names(occ.full.data.factor), function(x) model_train_habitat <- caretList(
   occ~., 
-  data= occ.full.data.forCaret[[x]],
+  data= occ.full.data.factor[[x]],
   trControl=control,
   tuneList=mylist), 
   simplify=FALSE)
@@ -536,7 +519,7 @@ eu_plot<-ggplot() +
                        labels = brks, 
                        na.value = NA) +
   #geom_sf(data = euocc1, color = "black", fill = "red", 
-          #size = 1.5, shape = 21) +
+  #size = 1.5, shape = 21) +
   theme_bw() +
   labs(fill = "Suitability")+
   coord_sf(xlim = c(2254476, 6005897), 
@@ -626,7 +609,7 @@ country_plot<-ggplot() +
                        labels = brks, 
                        na.value = NA) +
   #geom_sf(data = be_occ, color = "black", fill = "red", 
-          #size = 1.5, shape = 21) +
+  #size = 1.5, shape = 21) +
   theme_bw() +
   labs(fill = "Suitability")
 country_plot
@@ -696,7 +679,7 @@ eumodel <-list(species = species,
 qsave(eumodel, paste0(EuropeanModelOutput,"/EuropeanModelOutput.qs"))
 
 print(paste("European model has been created for", species))
-  
+
 
 #--------------------------------------------
 #------------ Open output qs file -----------

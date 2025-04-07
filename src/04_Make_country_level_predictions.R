@@ -2,14 +2,14 @@
 #-----------To do: specify project-----------
 #--------------------------------------------
 #specify project name
-projectname<-"Spatial_thinning10km_nativeonly"
+projectname<-"Buffered_occurrences_FINAL"
 
 
 #--------------------------------------------
 #-----------  Load packages  ----------------
 #--------------------------------------------
 packages <- c("viridis", "dplyr", "grid", "here", "qs","terra", "sf", "ggplot2","RColorBrewer","magick","patchwork",
-              "ape", "geoR", "raster", "pdp", "purrr"
+              "ape", "geoR", "raster", "pdp", "purrr", "sp", "ggspatial", "tidyterra"
 )
 
 for(package in packages) {
@@ -108,11 +108,11 @@ species<-taxa_info%>%
 taxonkey<- key
 
 #Read in globalmodels object that was stored as part of  script 03_fit_European_model
-eumodel<-qread( paste0("./data/projects/",projectname,"/Vespa_velutina_1311477/EU_model_Vespa_velutina_1311477.qs"))
+eumodel<-qread( paste0("./data/projects/",projectname,"/EuropeanModelOutput/EuropeanModelOutput.qs"))
 
 #Read in different data objects stored in globalmodels
-euocc<-eumodel$euocc1 #occurrences in point geometry
-bestModel<-unwrap(eumodel$bestModel) #global_ensemble_model
+euocc<-eumodel$occurrences #occurrences in point geometry
+bestModel<-unwrap(eumodel$ensemble_model) #global_ensemble_model
 fullstack_be<-unwrap(eumodel$fullstack_be)
 
 
@@ -122,7 +122,7 @@ suppressWarnings(
   occ.country <- euocc%>%
     st_transform(crs=st_crs(country))%>%
     st_intersection(country)%>%
-    select(geometry)%>%
+    dplyr::select(geometry)%>%
     mutate(decimalLongitude = sf::st_coordinates(.)[,1],
            decimalLatitude = sf::st_coordinates(.)[,2])
 )
@@ -178,22 +178,23 @@ plot_final
 #- Export country predictions as raster and PDF --
 #-------------------------------------------------
 #---------Specify folder paths------------
-raster_folder <- file.path("./data/projects", projectname, paste0(first_two_words, "_", taxonkey), "Rasters")
-PDF_folder <- file.path("./data/projects", projectname, paste0(first_two_words, "_", taxonkey), "PDFs")
-
+CountryPredictions <- file.path("./data/projects", projectname, "CountryPredictions")
+if (!dir.exists(CountryPredictions)) {
+  dir.create(CountryPredictions, recursive = TRUE)
+}
 #---------------Export raster-------------
 writeRaster(ens_pred_hab_be,
-            filename=file.path(raster_folder,paste(first_two_words,"_",taxonkey,"_hist_",country_name,".tif",sep="")),
+            filename=file.path(CountryPredictions,paste("hist_",country_name,".tif",sep="")),
             overwrite=TRUE)
 
 #---------------Export PDF----------------
 #Define the file paths
-plot_png_path <- file.path(PDF_folder,paste(first_two_words,"_",taxonkey,"_hist_",country_name,".png",sep=""))
-plot_pdf_path <- file.path(PDF_folder,paste(first_two_words,"_",taxonkey,"_hist_",country_name,".pdf",sep=""))
+plot_png_path <- file.path(CountryPredictions,paste("hist_",country_name,".png",sep=""))
+plot_pdf_path <- file.path(CountryPredictions,paste("hist_",country_name,".pdf",sep=""))
 
 # Save each plot as a PDF file
-ggsave(filename = paste0(first_two_words,"_",taxonkey,"_hist_",country_name,".png"), plot = plot_final, 
-       device = "png", width =8.27 , height = 11.69, path= PDF_folder)
+ggsave(filename = paste0("hist_",country_name,".png"), plot = plot_final, 
+       device = "png", width =8.27 , height = 11.69, path= CountryPredictions)
 
 # Read the PNG image back in
 img <- image_read(plot_png_path)
@@ -206,7 +207,7 @@ grid.newpage()
 
 # Add title at the top of the PDF
 grid.text(
-  label = bquote(italic(.(first_two_words)) ~ .(rest_of_name) ~ "(" * .(taxonkey) * ")"),
+  label = bquote(italic("Vespa velutina")),
   x = 0.5, y = 0.95, just = "center", gp = gpar(fontsize = 12, fontface = "bold")
 )
 
@@ -270,14 +271,14 @@ country_layers<-list(
 ### Create and export RCP risk maps for each RCP scenario
 ens_pred_hist <- raster::predict(fullstack_be, bestModel, type = "prob", na.rm = TRUE)
 ens_pred_hab26<-raster::predict(fullstack26,bestModel,type="prob", na.rm=TRUE)
-writeRaster(ens_pred_hab26, filename=file.path(raster_folder,paste("be_",taxonkey, "_rcp26.tif",sep="")), overwrite=TRUE) 
-exportPDF(ens_pred_hab26,taxonkey,first_two_words,"rcp26.pdf")
+writeRaster(ens_pred_hab26, filename=file.path(CountryPredictions,paste("be_",taxonkey, "_rcp26.tif",sep="")), overwrite=TRUE) 
+exportPDF(ens_pred_hab26,taxonkey,"Vespa velutina", "", "rcp26.pdf")
 ens_pred_hab45<-raster::predict(fullstack45,bestModel,type="prob", na.rm=TRUE)
-writeRaster(ens_pred_hab45, filename=file.path(raster_folder,paste("be_",taxonkey, "_rcp45.tif",sep="")), overwrite=TRUE) 
-exportPDF(ens_pred_hab45,taxonkey,first_two_words,"rcp45.pdf")
+writeRaster(ens_pred_hab45, filename=file.path(CountryPredictions,paste("be_",taxonkey, "_rcp45.tif",sep="")), overwrite=TRUE) 
+exportPDF(ens_pred_hab45,taxonkey,"Vespa velutina", "", "rcp45.pdf")
 ens_pred_hab85<-raster::predict(fullstack85,bestModel,type="prob", na.rm=TRUE)
-writeRaster(ens_pred_hab85, filename=file.path(raster_folder,paste("be_",taxonkey, "_rcp85.tif",sep="")), overwrite=TRUE) 
-exportPDF(ens_pred_hab85,taxonkey,first_two_words,"rcp85.pdf")
+writeRaster(ens_pred_hab85, filename=file.path(CountryPredictions,paste("be_",taxonkey, "_rcp85.tif",sep="")), overwrite=TRUE) 
+exportPDF(ens_pred_hab85,taxonkey,"Vespa velutina", "", "rcp85.pdf")
 
 
 
@@ -293,18 +294,18 @@ plot(ens_pred_hab85,breaks=brks, lab.breaks=brks)
 
 ### Create and export "difference maps": the difference between predicted risk by each RCP scenario and historical climate
 hist26_diff_hab <- ens_pred_hab26 - ens_pred_hist
-writeRaster(hist26_diff_hab,filename=file.path(raster_folder,paste("be_",taxonkey, "_rcp26_diff.tif",sep="")) , overwrite=TRUE) 
-exportPDF(hist26_diff_hab,taxonkey,first_two_words,"rcp26_diff.pdf","TRUE")
+writeRaster(hist26_diff_hab,filename=file.path(CountryPredictions,paste("be_",taxonkey, "_rcp26_diff.tif",sep="")) , overwrite=TRUE) 
+exportPDF(hist26_diff_hab,taxonkey,"Vespa velutina","rcp26_diff.pdf","TRUE")
 
 
 hist45_diff_hab<-ens_pred_hab45 - ens_pred_hist
-writeRaster(hist45_diff_hab,filename=file.path(raster_folder,paste("be_",taxonkey, "_rcp45_diff.tif",sep="")),overwrite=TRUE) 
-exportPDF(hist45_diff_hab,taxonkey,first_two_words,"rcp45_diff.pdf","TRUE")
+writeRaster(hist45_diff_hab,filename=file.path(CountryPredictions,paste("be_",taxonkey, "_rcp45_diff.tif",sep="")),overwrite=TRUE) 
+exportPDF(hist45_diff_hab,taxonkey,"Vespa velutina","rcp45_diff.pdf","TRUE")
 
 
 hist85_diff_hab<-ens_pred_hab85 - ens_pred_hist
-writeRaster(hist85_diff_hab, filename=file.path(raster_folder,paste("be_",taxonkey, "_rcp_85_diff.tif",sep="")), overwrite=TRUE) 
-exportPDF(hist85_diff_hab,taxonkey, first_two_words,"rcp85_diff.pdf","TRUE")
+writeRaster(hist85_diff_hab, filename=file.path(CountryPredictions,paste("be_",taxonkey, "_rcp_85_diff.tif",sep="")), overwrite=TRUE) 
+exportPDF(hist85_diff_hab,taxonkey, "Vespa velutina","rcp85_diff.pdf","TRUE")
 
 par(mfrow=c(2,2), mar= c(2,3,0.8,0.8))
 plot(hist26_diff_hab)
@@ -324,7 +325,7 @@ obs.numeric<-ifelse(predEns1$obs == "absent",0,1)
 hab.res<-stdres(obs.numeric,predEns1$present)
 
 # specify corresponding model number from eu_presabs.coord datafile to join data with xy locations. If best model is "X1", join with eu_presabs.coord$X1
-res.best.coords1<-cbind(coordinates(eu_presabs.coord$X1),occ.full.data.forCaret$X1)
+res.best.coords1<-cbind(coordinates(eu_presabs.coord$X1),occ.full.data.factor$X1)
 removedNAs.coords<-na.omit(res.best.coords1)
 res.best.coords<-cbind(removedNAs.coords,hab.res)
 res.best.geo<-as.geodata(res.best.coords,coords.col=1:2,data.col = 3)
@@ -369,10 +370,10 @@ cols<-pal(nb)
 
 
 par(mfrow=c(2,2), mar= c(2,3,0.8,0.8))
-hist.conf.map<-confidenceMaps(pvalsdf_hist,taxonkey,first_two_words,maptype="hist_conf")
-rcp26.conf.map<-confidenceMaps(pvalsdf_rcp26,taxonkey,first_two_words,maptype="rcp26_conf")
-rcp45.conf.map<-confidenceMaps(pvalsdf_rcp45,taxonkey,first_two_words,maptype="rcp45_conf")
-rcp85.conf.map<-confidenceMaps(pvalsdf_rcp85,taxonkey,first_two_words,maptype="rcp85_conf")
+hist.conf.map<-confidenceMaps(pvalsdf_hist,taxonkey,"Vespa velutina",maptype="hist_conf")
+rcp26.conf.map<-confidenceMaps(pvalsdf_rcp26,taxonkey,"Vespa velutina",maptype="rcp26_conf")
+rcp45.conf.map<-confidenceMaps(pvalsdf_rcp45,taxonkey,"Vespa velutina",maptype="rcp45_conf")
+rcp85.conf.map<-confidenceMaps(pvalsdf_rcp85,taxonkey,"Vespa velutina",maptype="rcp85_conf")
 
 
 
@@ -412,8 +413,8 @@ brks <- seq(0, 1, by=0.1)
 nb <- length(brks)-1 
 pal <- colorRampPalette(rev(brewer.pal(4, 'Spectral')))
 set.seed(792)  
-pvalsdf_hist_eu<-classConformalPrediction(bestModel,ens_pred_hab_eu1)
-hist.conf.map.eu<-confidenceMaps(pvalsdf_hist_eu,taxonkey,first_two_words,maptype="hist_conf_eu")
+pvalsdf_hist_eu<-classConformalPrediction(bestModel,ens_pred_hist)
+hist.conf.map.eu<-confidenceMaps(pvalsdf_hist_eu,taxonkey,"Vespa velutina",maptype="hist_conf_eu")
 
 
 #Here responce curves moved to script 5
